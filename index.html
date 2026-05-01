@@ -2,14 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
   <title>Shift4 Timer</title>
 
   <meta name="theme-color" content="#136EF6">
   <meta name="application-name" content="Shift4 Timer">
-
   <meta name="mobile-web-app-capable" content="yes">
 
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -26,14 +24,25 @@
 
 <body>
   <div id="splashScreen" class="splash-screen">
-    <div class="splash-content">
-      <img src="icon-512.png" alt="Shift4 Timer" class="splash-logo">
-      <div class="splash-spinner"></div>
-      <div class="splash-text">Loading Shift4 Timer...</div>
+    <div class="splash-inner">
+      <div class="rocket-zone">
+        <div class="rocket-glow"></div>
+        <div class="rocket-trail"></div>
+        <img src="icon-512.png" alt="Shift4 Timer" class="rocket-logo">
+      </div>
+
+      <div class="splash-title">Shift4 Timer</div>
+      <div class="splash-subtitle">Loading Shift4 Way</div>
+
+      <div class="loading-dots" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
     </div>
   </div>
 
-  <div class="app-shell">
+  <div id="appShell" class="app-shell app-shell-hidden">
     <header class="app-header">
       <div class="brand-left">
         <img class="app-logo" src="icon-192.png" alt="Shift4 Timer">
@@ -78,6 +87,7 @@
             <div class="section-title">Signed In</div>
             <div class="signed-user" id="signedInUser">—</div>
           </div>
+
           <button class="btn btn-secondary small-btn" id="resetBtn" type="button">
             Reset
           </button>
@@ -106,16 +116,12 @@
         <section class="card timer-card">
           <div class="section-title">Timer</div>
 
-          <div class="timer-display" id="timerDisplay">
-            00:00:00
-          </div>
+          <div class="timer-display" id="timerDisplay">00:00:00</div>
 
-          <div class="timer-meta" id="timerMeta">
-            Not started
-          </div>
+          <div class="timer-meta" id="timerMeta">Not started</div>
 
           <div class="button-row">
-            <button class="btn btn-success" id="startBtn" type="button">
+            <button class="btn btn-success" id="startBtn" type="button" disabled>
               Start
             </button>
 
@@ -142,7 +148,6 @@
   </div>
 
   <script src="app.js"></script>
-
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('service-worker.js');
