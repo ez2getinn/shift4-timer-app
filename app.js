@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', initApp);
 async function initApp() {
   cacheElements();
   bindEvents();
+  registerServiceWorker();
   updateTimerDisplay(0);
   setBusy(true, 'Loading');
 
@@ -91,7 +92,6 @@ function bindEvents() {
   els.siteSelect.addEventListener('change', function() {
     const siteCode = els.siteSelect.value;
     const sites = state.appData.sites || [];
-
     state.selectedSite = sites.find(site => site.siteCode === siteCode) || null;
     validateReadyToStart();
   });
@@ -99,6 +99,12 @@ function bindEvents() {
   els.startBtn.addEventListener('click', startTimer);
   els.stopBtn.addEventListener('click', stopTimer);
   els.submitBtn.addEventListener('click', submitTimerLog);
+}
+
+function registerServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('service-worker.js').catch(() => {});
+  }
 }
 
 function applyConfig() {
@@ -322,7 +328,6 @@ function stopTimer() {
     `Started ${formatDateTime(state.startTime)} • Stopped ${formatDateTime(state.endTime)}`;
 
   showMessage(els.submitMessage, 'Select result status, then submit.', 'info');
-
   validateReadyToSubmit();
 }
 
@@ -445,7 +450,6 @@ function clearRadioGroup(container) {
 
 function disableRadioGroup(container, disabled) {
   const inputs = container.querySelectorAll('input[type="radio"]');
-
   inputs.forEach(input => {
     input.disabled = disabled;
   });
@@ -502,7 +506,7 @@ function setBusy(isBusy, label) {
 }
 
 function revealApp() {
-  const minSplashTime = 1200;
+  const minSplashTime = 1600;
 
   setTimeout(function() {
     if (els.appShell) {
