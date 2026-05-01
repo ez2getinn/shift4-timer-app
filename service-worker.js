@@ -1,4 +1,4 @@
-const CACHE_NAME = 'shift4-timer-v2';
+const CACHE_NAME = 'shift4-timer-v4';
 
 const APP_FILES = [
   '/shift4-timer-app/',
@@ -7,7 +7,8 @@ const APP_FILES = [
   '/shift4-timer-app/app.js',
   '/shift4-timer-app/manifest.json',
   '/shift4-timer-app/icon-192.png',
-  '/shift4-timer-app/icon-512.png'
+  '/shift4-timer-app/icon-512.png',
+  '/shift4-timer-app/rocket.png'
 ];
 
 self.addEventListener('install', event => {
@@ -44,6 +45,10 @@ self.addEventListener('fetch', event => {
         });
         return response;
       })
-      .catch(() => caches.match(event.request).then(cached => cached || caches.match('/shift4-timer-app/')))
+      .catch(() =>
+        caches.match(event.request).then(cached => {
+          return cached || caches.match('/shift4-timer-app/');
+        })
+      )
   );
 });
