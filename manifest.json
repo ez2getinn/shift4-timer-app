@@ -1,0 +1,25 @@
+{
+  "name": "Shift4 Timer",
+  "short_name": "S4 Timer",
+  "description": "Shift4 installer timer app",
+  "start_url": "/shift4-timer-app/",
+  "scope": "/shift4-timer-app/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#07111F",
+  "theme_color": "#136EF6",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
