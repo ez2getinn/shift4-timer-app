@@ -38,14 +38,19 @@ async function initApp() {
 
     setBusy(false, 'Ready');
     showMessage(els.loginMessage, 'Enter installer code to begin.', 'info');
+    revealApp();
 
   } catch (error) {
     setBusy(false, 'Error');
     showMessage(els.loginMessage, error.message || 'Unable to load app.', 'error');
+    revealApp();
   }
 }
 
 function cacheElements() {
+  els.splashScreen = document.getElementById('splashScreen');
+  els.appShell = document.getElementById('appShell');
+
   els.appTitle = document.getElementById('appTitle');
   els.connectionStatus = document.getElementById('connectionStatus');
 
@@ -100,10 +105,7 @@ function applyConfig() {
   const appTitle = state.appData.appName || 'Shift4 Timer';
 
   document.title = appTitle;
-
-  if (els.appTitle) {
-    els.appTitle.textContent = appTitle;
-  }
+  els.appTitle.textContent = appTitle;
 }
 
 function populateSites() {
@@ -176,8 +178,8 @@ function renderRadioGroup(config) {
     span.textContent = option.label;
 
     input.addEventListener('change', function() {
-      const allOptions = container.querySelectorAll('label');
-      allOptions.forEach(item => item.classList.remove('selected'));
+      const allLabels = container.querySelectorAll('label');
+      allLabels.forEach(item => item.classList.remove('selected'));
 
       label.classList.add('selected');
 
@@ -225,7 +227,11 @@ async function handleInstallerVerify() {
 
   } catch (error) {
     setBusy(false, 'Error');
-    showMessage(els.loginMessage, error.message || 'Unable to validate installer.', 'error');
+    showMessage(
+      els.loginMessage,
+      error.message || 'Unable to validate installer.',
+      'error'
+    );
   }
 }
 
@@ -369,7 +375,11 @@ async function submitTimerLog() {
 
   } catch (error) {
     setBusy(false, 'Error');
-    showMessage(els.submitMessage, error.message || 'Unable to save timer log.', 'error');
+    showMessage(
+      els.submitMessage,
+      error.message || 'Unable to save timer log.',
+      'error'
+    );
     els.submitBtn.disabled = false;
   }
 }
@@ -490,6 +500,20 @@ function setBusy(isBusy, label) {
   if (els.verifyInstallerBtn) {
     els.verifyInstallerBtn.disabled = Boolean(isBusy);
   }
+}
+
+function revealApp() {
+  const minSplashTime = 1100;
+
+  setTimeout(function() {
+    if (els.appShell) {
+      els.appShell.classList.remove('app-shell-hidden');
+    }
+
+    if (els.splashScreen) {
+      els.splashScreen.classList.add('hidden');
+    }
+  }, minSplashTime);
 }
 
 function createSessionId() {
