@@ -1,12 +1,38 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
+
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
   <title>Shift4 Timer</title>
+
+  <meta name="theme-color" content="#136EF6">
+  <meta name="application-name" content="Shift4 Timer">
+
+  <meta name="mobile-web-app-capable" content="yes">
+
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Shift4 Timer">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+  <link rel="apple-touch-icon" href="icon-512.png">
 </head>
+
 <body>
-  <h1>Shift4 Timer App</h1>
-  <p>GitHub Pages test screen is working.</p>
+  <div style="font-family: Arial, sans-serif; padding: 24px;">
+    <img src="icon-192.png" alt="Shift4 Timer" style="width: 72px; height: 72px; border-radius: 18px;">
+    <h1>Shift4 Timer App</h1>
+    <p>App icon and PWA setup test is working.</p>
+  </div>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js');
+    }
+  </script>
 </body>
 </html>
