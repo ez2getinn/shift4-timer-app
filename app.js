@@ -1,0 +1,535 @@
+const API_URL = 'https://script.google.com/macros/s/AKfycbzOChrnwwBw6qQjgxXyZks6aTJOsv_80SmL41EeMoO0J1fDwz-xDqJYpKdR0-ce86hp/exec';
+
+const state = {
+  sessionId: createSessionId(),
+  appData: {},
+  installer: null,
+  selectedSite: null,
+  selectedTestType: '',
+  selectedStatus: '',
+  startTime: null,
+  endTime: null,
+  timerInterval: null,
+  elapsedSeconds: 0
+};
+
+const els = {};
+
+document.addEventListener('DOMContentLoaded', initApp);
+
+async function initApp() {
+  cacheElements();
+  bindEvents();
+  updateTimerDisplay(0);
+  setBusy(true, 'Loading');
+
+  try {
+    const result = await apiCall('getAppData');
+
+    if (!result || !result.success) {
+      throw new Error(result && result.message ? result.message : 'Unable to load app data.');
+    }
+
+    state.appData = result.data || {};
+
+    applyConfig();
+    populateSites();
+    populateOptionGroups();
+
+    setBusy(false, 'Ready');
+    showMessage(els.loginMessage, 'Enter installer code to begin.', 'info');
+
+  } catch (error) {
+    setBusy(false, 'Error');
+    showMessage(els.loginMessage, error.message || 'Unable to load app.', 'error');
+  }
+}
+
+function cacheElements() {
+  els.appTitle = document.getElementById('appTitle');
+  els.connectionStatus = document.getElementById('connectionStatus');
+
+  els.loginCard = document.getElementById('loginCard');
+  els.installerCodeInput = document.getElementById('installerCodeInput');
+  els.verifyInstallerBtn = document.getElementById('verifyInstallerBtn');
+  els.loginMessage = document.getElementById('loginMessage');
+
+  els.appContent = document.getElementById('appContent');
+  els.signedInUser = document.getElementById('signedInUser');
+  els.resetBtn = document.getElementById('resetBtn');
+
+  els.siteSelect = document.getElementById('siteSelect');
+  els.testTypeGroup = document.getElementById('testTypeGroup');
+  els.notesInput = document.getElementById('notesInput');
+
+  els.timerDisplay = document.getElementById('timerDisplay');
+  els.timerMeta = document.getElementById('timerMeta');
+  els.startBtn = document.getElementById('startBtn');
+  els.stopBtn = document.getElementById('stopBtn');
+
+  els.statusGroup = document.getElementById('statusGroup');
+  els.submitBtn = document.getElementById('submitBtn');
+  els.submitMessage = document.getElementById('submitMessage');
+}
+
+function bindEvents() {
+  els.verifyInstallerBtn.addEventListener('click', handleInstallerVerify);
+
+  els.installerCodeInput.addEventListener('keydown', function(event) {
+    if (event.key === 'Enter') {
+      handleInstallerVerify();
+    }
+  });
+
+  els.resetBtn.addEventListener('click', resetApp);
+
+  els.siteSelect.addEventListener('change', function() {
+    const siteCode = els.siteSelect.value;
+    const sites = state.appData.sites || [];
+
+    state.selectedSite = sites.find(site => site.siteCode === siteCode) || null;
+    validateReadyToStart();
+  });
+
+  els.startBtn.addEventListener('click', startTimer);
+  els.stopBtn.addEventListener('click', stopTimer);
+  els.submitBtn.addEventListener('click', submitTimerLog);
+}
+
+function applyConfig() {
+  const appTitle = state.appData.appName || 'Shift4 Timer';
+
+  document.title = appTitle;
+
+  if (els.appTitle) {
+    els.appTitle.textContent = appTitle;
+  }
+}
+
+function populateSites() {
+  const sites = state.appData.sites || [];
+
+  els.siteSelect.innerHTML = '<option value="">Select site</option>';
+
+  sites.forEach(site => {
+    const option = document.createElement('option');
+    option.value = site.siteCode;
+    option.textContent = `${site.siteCode} — ${site.siteName}`;
+    els.siteSelect.appendChild(option);
+  });
+}
+
+function populateOptionGroups() {
+  const options = state.appData.options || {};
+  const testTypes = options.TestType || [];
+  const statuses = options.Status || [];
+
+  renderRadioGroup({
+    container: els.testTypeGroup,
+    name: 'testType',
+    options: testTypes,
+    onChange: function(value) {
+      state.selectedTestType = value;
+      validateReadyToStart();
+    }
+  });
+
+  renderRadioGroup({
+    container: els.statusGroup,
+    name: 'status',
+    options: statuses,
+    onChange: function(value) {
+      state.selectedStatus = value;
+      validateReadyToSubmit();
+    },
+    statusMode: true
+  });
+}
+
+function renderRadioGroup(config) {
+  const container = config.container;
+  const name = config.name;
+  const options = config.options || [];
+  const onChange = config.onChange;
+  const statusMode = Boolean(config.statusMode);
+
+  container.innerHTML = '';
+
+  options.forEach(option => {
+    const label = document.createElement('label');
+    label.className = statusMode ? 'status-option' : 'radio-option';
+
+    if (statusMode && option.value === 'SUCCESS') {
+      label.classList.add('success');
+    }
+
+    if (statusMode && option.value === 'ISSUE') {
+      label.classList.add('danger');
+    }
+
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = name;
+    input.value = option.value;
+
+    const span = document.createElement('span');
+    span.textContent = option.label;
+
+    input.addEventListener('change', function() {
+      const allOptions = container.querySelectorAll('label');
+      allOptions.forEach(item => item.classList.remove('selected'));
+
+      label.classList.add('selected');
+
+      if (typeof onChange === 'function') {
+        onChange(option.value);
+      }
+    });
+
+    label.appendChild(input);
+    label.appendChild(span);
+    container.appendChild(label);
+  });
+}
+
+async function handleInstallerVerify() {
+  const code = els.installerCodeInput.value.trim();
+
+  clearMessage(els.loginMessage);
+
+  if (!code) {
+    showMessage(els.loginMessage, 'Please enter installer code.', 'error');
+    return;
+  }
+
+  setBusy(true, 'Checking');
+
+  try {
+    const result = await apiCall('validateInstaller', {
+      installerCode: code
+    });
+
+    setBusy(false, 'Ready');
+
+    if (!result || !result.success) {
+      showMessage(
+        els.loginMessage,
+        result && result.message ? result.message : 'Invalid installer code.',
+        'error'
+      );
+      return;
+    }
+
+    state.installer = result.installer;
+    showApp();
+
+  } catch (error) {
+    setBusy(false, 'Error');
+    showMessage(els.loginMessage, error.message || 'Unable to validate installer.', 'error');
+  }
+}
+
+function showApp() {
+  els.loginCard.classList.add('hidden');
+  els.appContent.classList.remove('hidden');
+
+  els.signedInUser.textContent =
+    `${state.installer.installerName} • ${state.installer.installerEmail}`;
+
+  showMessage(els.submitMessage, 'Select site, test type, then start timer.', 'info');
+}
+
+function validateReadyToStart() {
+  const ready =
+    Boolean(state.installer) &&
+    Boolean(state.selectedSite) &&
+    Boolean(state.selectedTestType) &&
+    !state.startTime;
+
+  els.startBtn.disabled = !ready;
+}
+
+function validateReadyToSubmit() {
+  const ready =
+    Boolean(state.installer) &&
+    Boolean(state.selectedSite) &&
+    Boolean(state.selectedTestType) &&
+    Boolean(state.startTime) &&
+    Boolean(state.endTime) &&
+    Boolean(state.selectedStatus);
+
+  els.submitBtn.disabled = !ready;
+}
+
+function startTimer() {
+  if (!state.selectedSite || !state.selectedTestType) {
+    showMessage(els.submitMessage, 'Please select site and test type first.', 'error');
+    return;
+  }
+
+  state.startTime = new Date();
+  state.endTime = null;
+  state.elapsedSeconds = 0;
+  state.selectedStatus = '';
+
+  clearStatusSelection();
+
+  els.startBtn.disabled = true;
+  els.stopBtn.disabled = false;
+  els.submitBtn.disabled = true;
+  els.siteSelect.disabled = true;
+
+  disableRadioGroup(els.testTypeGroup, true);
+  disableRadioGroup(els.statusGroup, true);
+
+  els.timerMeta.textContent = `Started at ${formatDateTime(state.startTime)}`;
+  showMessage(els.submitMessage, 'Timer running.', 'info');
+
+  state.timerInterval = setInterval(function() {
+    const now = new Date();
+    state.elapsedSeconds = Math.floor((now.getTime() - state.startTime.getTime()) / 1000);
+    updateTimerDisplay(state.elapsedSeconds);
+  }, 500);
+}
+
+function stopTimer() {
+  if (!state.startTime) {
+    return;
+  }
+
+  state.endTime = new Date();
+
+  if (state.timerInterval) {
+    clearInterval(state.timerInterval);
+    state.timerInterval = null;
+  }
+
+  state.elapsedSeconds = Math.floor(
+    (state.endTime.getTime() - state.startTime.getTime()) / 1000
+  );
+
+  updateTimerDisplay(state.elapsedSeconds);
+
+  els.stopBtn.disabled = true;
+  disableRadioGroup(els.statusGroup, false);
+
+  els.timerMeta.textContent =
+    `Started ${formatDateTime(state.startTime)} • Stopped ${formatDateTime(state.endTime)}`;
+
+  showMessage(els.submitMessage, 'Select result status, then submit.', 'info');
+
+  validateReadyToSubmit();
+}
+
+async function submitTimerLog() {
+  if (!state.endTime || !state.selectedStatus) {
+    showMessage(els.submitMessage, 'Please stop timer and select result status.', 'error');
+    return;
+  }
+
+  const payload = {
+    sessionId: state.sessionId,
+    installerCode: state.installer.installerCode,
+    installerName: state.installer.installerName,
+    installerEmail: state.installer.installerEmail,
+    siteCode: state.selectedSite.siteCode,
+    siteName: state.selectedSite.siteName,
+    testType: state.selectedTestType,
+    startTime: formatDateTime(state.startTime),
+    endTime: formatDateTime(state.endTime),
+    durationSeconds: state.elapsedSeconds,
+    durationDisplay: formatDuration(state.elapsedSeconds),
+    status: state.selectedStatus,
+    notes: els.notesInput.value.trim(),
+    userAgent: navigator.userAgent
+  };
+
+  setBusy(true, 'Saving');
+  els.submitBtn.disabled = true;
+
+  try {
+    const result = await apiCall('saveTimerLog', {
+      payload: JSON.stringify(payload)
+    });
+
+    setBusy(false, 'Ready');
+
+    if (!result || !result.success) {
+      showMessage(
+        els.submitMessage,
+        result && result.message ? result.message : 'Unable to save timer log.',
+        'error'
+      );
+      els.submitBtn.disabled = false;
+      return;
+    }
+
+    showMessage(els.submitMessage, 'Saved successfully to Google Sheet.', 'success');
+    lockAfterSubmit();
+
+  } catch (error) {
+    setBusy(false, 'Error');
+    showMessage(els.submitMessage, error.message || 'Unable to save timer log.', 'error');
+    els.submitBtn.disabled = false;
+  }
+}
+
+function lockAfterSubmit() {
+  els.submitBtn.disabled = true;
+  els.startBtn.disabled = true;
+  els.stopBtn.disabled = true;
+  els.notesInput.disabled = true;
+  disableRadioGroup(els.statusGroup, true);
+}
+
+function resetApp() {
+  if (state.timerInterval) {
+    clearInterval(state.timerInterval);
+  }
+
+  state.selectedSite = null;
+  state.selectedTestType = '';
+  state.selectedStatus = '';
+  state.startTime = null;
+  state.endTime = null;
+  state.elapsedSeconds = 0;
+  state.timerInterval = null;
+
+  els.siteSelect.disabled = false;
+  els.siteSelect.value = '';
+  els.notesInput.disabled = false;
+  els.notesInput.value = '';
+
+  clearRadioGroup(els.testTypeGroup);
+  clearRadioGroup(els.statusGroup);
+
+  disableRadioGroup(els.testTypeGroup, false);
+  disableRadioGroup(els.statusGroup, false);
+
+  els.startBtn.disabled = true;
+  els.stopBtn.disabled = true;
+  els.submitBtn.disabled = true;
+
+  updateTimerDisplay(0);
+  els.timerMeta.textContent = 'Not started';
+
+  showMessage(els.submitMessage, 'Select site, test type, then start timer.', 'info');
+}
+
+function clearStatusSelection() {
+  state.selectedStatus = '';
+  clearRadioGroup(els.statusGroup);
+}
+
+function clearRadioGroup(container) {
+  const inputs = container.querySelectorAll('input[type="radio"]');
+  const labels = container.querySelectorAll('label');
+
+  inputs.forEach(input => {
+    input.checked = false;
+  });
+
+  labels.forEach(label => {
+    label.classList.remove('selected');
+  });
+}
+
+function disableRadioGroup(container, disabled) {
+  const inputs = container.querySelectorAll('input[type="radio"]');
+
+  inputs.forEach(input => {
+    input.disabled = disabled;
+  });
+}
+
+function updateTimerDisplay(totalSeconds) {
+  els.timerDisplay.textContent = formatDuration(totalSeconds);
+}
+
+function formatDuration(totalSeconds) {
+  const seconds = Math.max(0, Number(totalSeconds || 0));
+
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+
+  return [
+    String(hrs).padStart(2, '0'),
+    String(mins).padStart(2, '0'),
+    String(secs).padStart(2, '0')
+  ].join(':');
+}
+
+function formatDateTime(date) {
+  if (!date) {
+    return '';
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  }).format(date);
+}
+
+function showMessage(element, message, type) {
+  element.textContent = message || '';
+  element.className = `message ${type || ''}`;
+}
+
+function clearMessage(element) {
+  showMessage(element, '', '');
+}
+
+function setBusy(isBusy, label) {
+  els.connectionStatus.textContent = label || (isBusy ? 'Working' : 'Ready');
+
+  if (els.verifyInstallerBtn) {
+    els.verifyInstallerBtn.disabled = Boolean(isBusy);
+  }
+}
+
+function createSessionId() {
+  return 'session-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
+}
+
+function apiCall(action, params = {}) {
+  return new Promise((resolve, reject) => {
+    const callbackName = 'jsonpCallback_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+
+    const query = new URLSearchParams();
+    query.set('action', action);
+    query.set('callback', callbackName);
+
+    Object.keys(params).forEach(key => {
+      query.set(key, params[key]);
+    });
+
+    const script = document.createElement('script');
+
+    window[callbackName] = function(response) {
+      cleanup();
+      resolve(response);
+    };
+
+    script.onerror = function() {
+      cleanup();
+      reject(new Error('Unable to connect to backend API.'));
+    };
+
+    script.src = API_URL + '?' + query.toString();
+
+    document.body.appendChild(script);
+
+    function cleanup() {
+      delete window[callbackName];
+
+      if (script && script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+    }
+  });
+}
