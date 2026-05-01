@@ -20,14 +20,120 @@
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
   <link rel="apple-touch-icon" href="icon-512.png">
+
+  <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
-  <div style="font-family: Arial, sans-serif; padding: 24px;">
-    <img src="icon-192.png" alt="Shift4 Timer" style="width: 72px; height: 72px; border-radius: 18px;">
-    <h1>Shift4 Timer App</h1>
-    <p>App icon and PWA setup test is working.</p>
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="brand-left">
+        <img class="app-logo" src="icon-192.png" alt="Shift4 Timer">
+        <div class="brand-text">
+          <div class="eyebrow">SHIFT4 PROTOTYPE</div>
+          <h1 id="appTitle">Shift4 Timer</h1>
+        </div>
+      </div>
+
+      <div class="status-pill" id="connectionStatus">Loading</div>
+    </header>
+
+    <main class="app-main">
+
+      <section class="card" id="loginCard">
+        <div class="section-title">Installer Access</div>
+        <p class="muted">
+          Enter your installer code to begin.
+        </p>
+
+        <label class="field-label" for="installerCodeInput">Installer Code</label>
+        <input
+          id="installerCodeInput"
+          class="input"
+          type="text"
+          inputmode="numeric"
+          placeholder="Example: 1001"
+          autocomplete="off"
+        >
+
+        <button class="btn btn-primary" id="verifyInstallerBtn" type="button">
+          Continue
+        </button>
+
+        <div class="message" id="loginMessage"></div>
+      </section>
+
+      <section class="app-content hidden" id="appContent">
+
+        <section class="card user-card">
+          <div>
+            <div class="section-title">Signed In</div>
+            <div class="signed-user" id="signedInUser">—</div>
+          </div>
+          <button class="btn btn-secondary small-btn" id="resetBtn" type="button">
+            Reset
+          </button>
+        </section>
+
+        <section class="card">
+          <div class="section-title">Test Setup</div>
+
+          <label class="field-label" for="siteSelect">Site</label>
+          <select id="siteSelect" class="input">
+            <option value="">Select site</option>
+          </select>
+
+          <div class="field-label">Test Type</div>
+          <div class="radio-grid" id="testTypeGroup"></div>
+
+          <label class="field-label" for="notesInput">Notes</label>
+          <textarea
+            id="notesInput"
+            class="input textarea"
+            placeholder="Optional notes"
+            rows="3"
+          ></textarea>
+        </section>
+
+        <section class="card timer-card">
+          <div class="section-title">Timer</div>
+
+          <div class="timer-display" id="timerDisplay">
+            00:00:00
+          </div>
+
+          <div class="timer-meta" id="timerMeta">
+            Not started
+          </div>
+
+          <div class="button-row">
+            <button class="btn btn-success" id="startBtn" type="button">
+              Start
+            </button>
+
+            <button class="btn btn-danger" id="stopBtn" type="button" disabled>
+              Stop
+            </button>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-title">Result</div>
+
+          <div class="status-grid" id="statusGroup"></div>
+
+          <button class="btn btn-primary" id="submitBtn" type="button" disabled>
+            Submit Timer Log
+          </button>
+
+          <div class="message" id="submitMessage"></div>
+        </section>
+
+      </section>
+    </main>
   </div>
+
+  <script src="app.js"></script>
 
   <script>
     if ('serviceWorker' in navigator) {
