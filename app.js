@@ -103,7 +103,6 @@ function bindEvents() {
 
 function applyConfig() {
   const appTitle = state.appData.appName || 'Shift4 Timer';
-
   document.title = appTitle;
   els.appTitle.textContent = appTitle;
 }
@@ -503,7 +502,7 @@ function setBusy(isBusy, label) {
 }
 
 function revealApp() {
-  const minSplashTime = 1100;
+  const minSplashTime = 1200;
 
   setTimeout(function() {
     if (els.appShell) {
