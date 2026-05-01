@@ -24,15 +24,25 @@
 
 <body>
   <div id="splashScreen" class="splash-screen">
-    <div class="splash-inner">
-      <div class="rocket-zone">
-        <div class="rocket-glow"></div>
+    <div class="splash-content">
+      <div class="rocket-scene">
         <div class="rocket-trail"></div>
-        <img src="icon-512.png" alt="Shift4 Timer" class="rocket-logo">
+
+        <div class="rocket">
+          <div class="rocket-window"></div>
+          <div class="rocket-fin rocket-fin-left"></div>
+          <div class="rocket-fin rocket-fin-right"></div>
+          <div class="rocket-flame"></div>
+        </div>
+
+        <div class="star star-1"></div>
+        <div class="star star-2"></div>
+        <div class="star star-3"></div>
+        <div class="star star-4"></div>
       </div>
 
       <div class="splash-title">Shift4 Timer</div>
-      <div class="splash-subtitle">Loading Shift4 Way</div>
+      <div class="splash-subtitle">Loading SHIFT4 WAY</div>
 
       <div class="loading-dots" aria-hidden="true">
         <span></span>
@@ -56,12 +66,9 @@
     </header>
 
     <main class="app-main">
-
       <section class="card" id="loginCard">
         <div class="section-title">Installer Access</div>
-        <p class="muted">
-          Enter your installer code to begin.
-        </p>
+        <p class="muted">Enter your installer code to begin.</p>
 
         <label class="field-label" for="installerCodeInput">Installer Code</label>
         <input
@@ -81,7 +88,6 @@
       </section>
 
       <section class="app-content hidden" id="appContent">
-
         <section class="card user-card">
           <div>
             <div class="section-title">Signed In</div>
@@ -117,7 +123,6 @@
           <div class="section-title">Timer</div>
 
           <div class="timer-display" id="timerDisplay">00:00:00</div>
-
           <div class="timer-meta" id="timerMeta">Not started</div>
 
           <div class="button-row">
@@ -142,16 +147,10 @@
 
           <div class="message" id="submitMessage"></div>
         </section>
-
       </section>
     </main>
   </div>
 
   <script src="app.js"></script>
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('service-worker.js');
-    }
-  </script>
 </body>
 </html>
