@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
-  <title>Shift4 Timer</title>
+  <title>Shift4 Step Timer</title>
 
   <meta name="theme-color" content="#136EF6">
-  <meta name="application-name" content="Shift4 Timer">
+  <meta name="application-name" content="Shift4 Step Timer">
   <meta name="mobile-web-app-capable" content="yes">
 
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -30,7 +30,7 @@
         <img src="rocket.png" alt="Rocket" class="splash-rocket">
       </div>
 
-      <div class="splash-title">Shift4 Timer</div>
+      <div class="splash-title">Shift4 Step Timer</div>
       <div class="splash-subtitle">Loading SHIFT4 WAY</div>
 
       <div class="loading-dots" aria-hidden="true">
@@ -46,8 +46,8 @@
       <div class="brand-left">
         <img class="app-logo" src="icon-192.png" alt="Shift4 Timer">
         <div class="brand-text">
-          <div class="eyebrow">SHIFT4 PROTOTYPE</div>
-          <h1 id="appTitle">Shift4 Timer</h1>
+          <div class="eyebrow">SHIFT4 STEP TIMER</div>
+          <h1 id="appTitle">Shift4 Step Timer</h1>
         </div>
       </div>
 
@@ -55,88 +55,98 @@
     </header>
 
     <main class="app-main">
-      <section class="card" id="loginCard">
-        <div class="section-title">Installer Access</div>
-        <p class="muted">Enter your installer code to begin.</p>
 
-        <label class="field-label" for="installerCodeInput">Installer Code</label>
+      <section class="card">
+        <div class="section-title">Device / Location</div>
+        <p class="muted">Optional label for this timing session.</p>
+
+        <label class="field-label" for="deviceLabelInput">Device / Location Name</label>
         <input
-          id="installerCodeInput"
+          id="deviceLabelInput"
           class="input"
           type="text"
-          inputmode="numeric"
-          placeholder="Example: 1001"
+          placeholder="Example: Test Site - Lane 1"
           autocomplete="off"
         >
+      </section>
 
-        <button class="btn btn-primary" id="verifyInstallerBtn" type="button">
-          Continue
+      <section class="card">
+        <div class="section-title">Select Step</div>
+
+        <label class="field-label" for="sectionSelect">Section</label>
+        <select id="sectionSelect" class="input">
+          <option value="">Loading sections...</option>
+        </select>
+
+        <label class="field-label" for="stepSelect">Step</label>
+        <select id="stepSelect" class="input" disabled>
+          <option value="">Select section first</option>
+        </select>
+
+        <div class="step-note" id="stepNote">Select a section and step to begin.</div>
+      </section>
+
+      <section class="card timer-card">
+        <div class="section-title">Current Timer</div>
+
+        <div class="active-step" id="activeStepName">No step selected</div>
+        <div class="timer-display" id="timerDisplay">00:00:00</div>
+        <div class="timer-meta" id="timerMeta">Ready</div>
+
+        <div class="button-row three-buttons">
+          <button class="btn btn-success" id="startBtn" type="button" disabled>
+            Start
+          </button>
+
+          <button class="btn btn-warning" id="pauseBtn" type="button" disabled>
+            Pause
+          </button>
+
+          <button class="btn btn-danger" id="finishBtn" type="button" disabled>
+            Finish
+          </button>
+        </div>
+
+        <label class="field-label" for="notesInput">Step Notes</label>
+        <textarea
+          id="notesInput"
+          class="input textarea"
+          placeholder="Optional notes for this step"
+          rows="3"
+        ></textarea>
+
+        <button class="btn btn-primary" id="saveBtn" type="button" disabled>
+          Save Step Time
         </button>
 
-        <div class="message" id="loginMessage"></div>
+        <div class="message" id="saveMessage"></div>
       </section>
 
-      <section class="app-content hidden" id="appContent">
-        <section class="card user-card">
-          <div>
-            <div class="section-title">Signed In</div>
-            <div class="signed-user" id="signedInUser">—</div>
+      <section class="card">
+        <div class="section-title">Session Summary</div>
+
+        <div class="summary-grid">
+          <div class="summary-box">
+            <div class="summary-label">Completed Steps</div>
+            <div class="summary-value" id="completedCount">0</div>
           </div>
 
-          <button class="btn btn-secondary small-btn" id="resetBtn" type="button">
-            Reset
-          </button>
-        </section>
-
-        <section class="card">
-          <div class="section-title">Test Setup</div>
-
-          <label class="field-label" for="siteSelect">Site</label>
-          <select id="siteSelect" class="input">
-            <option value="">Select site</option>
-          </select>
-
-          <div class="field-label">Test Type</div>
-          <div class="radio-grid" id="testTypeGroup"></div>
-
-          <label class="field-label" for="notesInput">Notes</label>
-          <textarea
-            id="notesInput"
-            class="input textarea"
-            placeholder="Optional notes"
-            rows="3"
-          ></textarea>
-        </section>
-
-        <section class="card timer-card">
-          <div class="section-title">Timer</div>
-
-          <div class="timer-display" id="timerDisplay">00:00:00</div>
-          <div class="timer-meta" id="timerMeta">Not started</div>
-
-          <div class="button-row">
-            <button class="btn btn-success" id="startBtn" type="button" disabled>
-              Start
-            </button>
-
-            <button class="btn btn-danger" id="stopBtn" type="button" disabled>
-              Stop
-            </button>
+          <div class="summary-box">
+            <div class="summary-label">Grand Total</div>
+            <div class="summary-value" id="grandTotal">00:00:00</div>
           </div>
-        </section>
+        </div>
 
-        <section class="card">
-          <div class="section-title">Result</div>
-
-          <div class="status-grid" id="statusGroup"></div>
-
-          <button class="btn btn-primary" id="submitBtn" type="button" disabled>
-            Submit Timer Log
-          </button>
-
-          <div class="message" id="submitMessage"></div>
-        </section>
+        <div class="section-totals" id="sectionTotals"></div>
       </section>
+
+      <section class="card">
+        <div class="section-title">Saved Steps</div>
+        <div class="saved-list" id="savedList">
+          <div class="empty-state">No steps saved yet.</div>
+        </div>
+      </section>
+
     </main>
   </div>
 
