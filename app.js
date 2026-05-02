@@ -4,16 +4,17 @@ const state = {
   sessionId: createSessionId(),
   appData: {},
   sections: [],
-  currentStep: null,
+  expandedSections: {},
+  activeStepKey: '',
   timerStatus: 'idle',
-  startTime: null,
-  endTime: null,
+  startedAt: null,
+  completedAt: null,
   activeStartedAt: null,
-  accumulatedMs: 0,
   pausedStartedAt: null,
+  accumulatedMs: 0,
   pausedSeconds: 0,
   timerInterval: null,
-  savedSteps: []
+  stepRecords: {}
 };
 
 const els = {};
@@ -25,7 +26,7 @@ async function initApp() {
   bindEvents();
   registerServiceWorker();
   updateTimerDisplay(0);
-  setBusy(true, 'Loading');
+  setBusy('Loading');
 
   try {
     const result = await apiCall('getAppData');
@@ -38,14 +39,16 @@ async function initApp() {
     state.sections = state.appData.sections || [];
 
     applyConfig();
-    populateSections();
+    initializeSections();
+    renderSections();
+    renderSummary();
 
-    setBusy(false, 'Ready');
-    setMessage('Select section and step to begin.', 'info');
+    setBusy('Ready');
+    setMessage('Select a step below to begin timing.', 'info');
     revealApp();
 
   } catch (error) {
-    setBusy(false, 'Error');
+    setBusy('Error');
     setMessage(error.message || 'Unable to load app.', 'error');
     revealApp();
   }
@@ -59,9 +62,9 @@ function cacheElements() {
   els.connectionStatus = document.getElementById('connectionStatus');
 
   els.deviceLabelInput = document.getElementById('deviceLabelInput');
-  els.sectionSelect = document.getElementById('sectionSelect');
-  els.stepSelect = document.getElementById('stepSelect');
-  els.stepNote = document.getElementById('stepNote');
+
+  els.completedCount = document.getElementById('completedCount');
+  els.grandTotal = document.getElementById('grandTotal');
 
   els.activeStepName = document.getElementById('activeStepName');
   els.timerDisplay = document.getElementById('timerDisplay');
@@ -69,26 +72,18 @@ function cacheElements() {
 
   els.startBtn = document.getElementById('startBtn');
   els.pauseBtn = document.getElementById('pauseBtn');
-  els.finishBtn = document.getElementById('finishBtn');
-  els.saveBtn = document.getElementById('saveBtn');
+  els.completeBtn = document.getElementById('completeBtn');
 
   els.notesInput = document.getElementById('notesInput');
   els.saveMessage = document.getElementById('saveMessage');
 
-  els.completedCount = document.getElementById('completedCount');
-  els.grandTotal = document.getElementById('grandTotal');
-  els.sectionTotals = document.getElementById('sectionTotals');
-  els.savedList = document.getElementById('savedList');
+  els.sectionsList = document.getElementById('sectionsList');
 }
 
 function bindEvents() {
-  els.sectionSelect.addEventListener('change', handleSectionChange);
-  els.stepSelect.addEventListener('change', handleStepChange);
-
-  els.startBtn.addEventListener('click', startTimer);
+  els.startBtn.addEventListener('click', startActiveStep);
   els.pauseBtn.addEventListener('click', togglePauseResume);
-  els.finishBtn.addEventListener('click', finishTimer);
-  els.saveBtn.addEventListener('click', saveCurrentStep);
+  els.completeBtn.addEventListener('click', completeActiveStep);
 }
 
 function registerServiceWorker() {
@@ -103,123 +98,221 @@ function applyConfig() {
   els.appTitle.textContent = appTitle;
 }
 
-function populateSections() {
-  els.sectionSelect.innerHTML = '<option value="">Select section</option>';
+function initializeSections() {
+  state.sections.forEach((section, index) => {
+    const sectionKey = getSectionKey(section);
+    state.expandedSections[sectionKey] = index === 0;
+
+    section.steps.forEach(step => {
+      const stepKey = getStepKey(step);
+
+      if (!state.stepRecords[stepKey]) {
+        state.stepRecords[stepKey] = {
+          sectionOrder: step.sectionOrder,
+          section: step.sectionName,
+          stepOrder: step.stepOrder,
+          stepName: step.stepName,
+          stepNotes: step.stepNotes || '',
+          durationSeconds: 0,
+          durationDisplay: '00:00:00',
+          pausedSeconds: 0,
+          status: 'NOT_STARTED',
+          notes: '',
+          stepStartedAt: '',
+          stepCompletedAt: ''
+        };
+      }
+    });
+  });
+}
+
+function renderSections() {
+  if (!state.sections.length) {
+    els.sectionsList.innerHTML = `
+      <div class="card">
+        <div class="section-title">No checklist found</div>
+        <p class="muted">No active steps were found in StepsConfig.</p>
+      </div>
+    `;
+    return;
+  }
+
+  els.sectionsList.innerHTML = '';
 
   state.sections.forEach(section => {
-    const option = document.createElement('option');
-    option.value = section.sectionName;
-    option.textContent = section.sectionName;
-    els.sectionSelect.appendChild(option);
-  });
+    const sectionKey = getSectionKey(section);
+    const isExpanded = Boolean(state.expandedSections[sectionKey]);
+    const sectionTotalSeconds = getSectionTotalSeconds(section);
+    const completedCount = getSectionCompletedCount(section);
+    const totalCount = section.steps.length;
 
-  els.stepSelect.innerHTML = '<option value="">Select section first</option>';
-  els.stepSelect.disabled = true;
+    const sectionCard = document.createElement('div');
+    sectionCard.className = 'section-card';
+
+    const headerButton = document.createElement('button');
+    headerButton.type = 'button';
+    headerButton.className = 'section-header-button';
+
+    headerButton.innerHTML = `
+      <div class="section-header-top">
+        <div class="section-name">${escapeHtml(section.sectionName)}</div>
+        <div class="section-chevron">${isExpanded ? '−' : '+'}</div>
+      </div>
+      <div class="section-meta">
+        <span class="section-pill">${formatDuration(sectionTotalSeconds)}</span>
+        <span class="section-pill ${completedCount === totalCount ? 'done' : ''}">
+          ${completedCount}/${totalCount} done
+        </span>
+      </div>
+    `;
+
+    headerButton.addEventListener('click', function() {
+      state.expandedSections[sectionKey] = !state.expandedSections[sectionKey];
+      renderSections();
+    });
+
+    const body = document.createElement('div');
+    body.className = isExpanded ? 'section-body' : 'section-body collapsed';
+
+    section.steps.forEach(step => {
+      body.appendChild(createStepRow(step));
+    });
+
+    sectionCard.appendChild(headerButton);
+    sectionCard.appendChild(body);
+    els.sectionsList.appendChild(sectionCard);
+  });
 }
 
-function handleSectionChange() {
-  const sectionName = els.sectionSelect.value;
-  const section = getSelectedSection();
+function createStepRow(step) {
+  const stepKey = getStepKey(step);
+  const record = state.stepRecords[stepKey];
+  const isActive = state.activeStepKey === stepKey;
+  const isCompleted = record.status === 'COMPLETED';
 
-  resetUnsavedTimer();
+  const row = document.createElement('div');
+  row.className = 'step-row';
 
-  if (!sectionName || !section) {
-    els.stepSelect.innerHTML = '<option value="">Select section first</option>';
-    els.stepSelect.disabled = true;
-    els.stepNote.textContent = 'Select a section and step to begin.';
-    els.activeStepName.textContent = 'No step selected';
-    return;
+  if (isActive) {
+    row.classList.add('active');
   }
 
-  els.stepSelect.disabled = false;
-  els.stepSelect.innerHTML = '<option value="">Select step</option>';
+  if (isCompleted) {
+    row.classList.add('completed');
+  }
 
-  section.steps.forEach(step => {
-    const option = document.createElement('option');
-    option.value = step.stepName;
-    option.textContent = step.stepName;
-    els.stepSelect.appendChild(option);
+  row.innerHTML = `
+    <div class="step-check">${isCompleted ? '✓' : ''}</div>
+    <div class="step-info">
+      <div class="step-name">${escapeHtml(step.stepName)}</div>
+      <div class="step-notes">${escapeHtml(step.stepNotes || '')}</div>
+    </div>
+    <div class="step-time">${escapeHtml(record.durationDisplay || '00:00:00')}</div>
+  `;
+
+  row.addEventListener('click', function() {
+    selectStep(step);
   });
 
-  els.stepNote.textContent = 'Select a step to start timing.';
-  els.activeStepName.textContent = 'No step selected';
+  return row;
 }
 
-function handleStepChange() {
-  resetUnsavedTimer();
+function selectStep(step) {
+  const stepKey = getStepKey(step);
 
-  const step = getSelectedStep();
+  if (state.timerStatus === 'running' || state.timerStatus === 'paused') {
+    if (state.activeStepKey !== stepKey) {
+      setMessage('Pause or complete the current step before selecting another step.', 'error');
+      return;
+    }
+  }
+
+  state.activeStepKey = stepKey;
+
+  const record = state.stepRecords[stepKey];
+  els.activeStepName.textContent = `${step.sectionName} — ${step.stepName}`;
+  els.notesInput.value = record.notes || '';
+  updateTimerDisplay(record.durationSeconds || 0);
+
+  if (record.status === 'COMPLETED') {
+    els.timerMeta.textContent = `Completed: ${record.durationDisplay}`;
+    els.startBtn.disabled = true;
+    els.pauseBtn.disabled = true;
+    els.completeBtn.disabled = true;
+    setMessage('This step is already completed.', 'success');
+  } else {
+    els.timerMeta.textContent = record.status === 'PAUSED' ? 'Paused.' : 'Ready to start.';
+    els.startBtn.disabled = false;
+    els.pauseBtn.disabled = true;
+    els.completeBtn.disabled = true;
+    setMessage('Ready to start selected step.', 'info');
+  }
+
+  renderSections();
+}
+
+function startActiveStep() {
+  const step = getActiveStep();
 
   if (!step) {
-    state.currentStep = null;
-    els.stepNote.textContent = 'Select a step to start timing.';
-    els.activeStepName.textContent = 'No step selected';
-    els.startBtn.disabled = true;
+    setMessage('Select a step first.', 'error');
     return;
   }
 
-  state.currentStep = step;
-  els.stepNote.textContent = step.notes || 'No notes for this step.';
-  els.activeStepName.textContent = step.stepName;
-  els.startBtn.disabled = false;
-  setMessage('Ready to start timer.', 'info');
-}
+  const record = state.stepRecords[state.activeStepKey];
 
-function getSelectedSection() {
-  const sectionName = els.sectionSelect.value;
-  return state.sections.find(section => section.sectionName === sectionName) || null;
-}
-
-function getSelectedStep() {
-  const section = getSelectedSection();
-  const stepName = els.stepSelect.value;
-
-  if (!section || !stepName) {
-    return null;
-  }
-
-  return section.steps.find(step => step.stepName === stepName) || null;
-}
-
-function startTimer() {
-  if (!state.currentStep) {
-    setMessage('Please select a section and step first.', 'error');
+  if (record.status === 'COMPLETED') {
+    setMessage('This step is already completed.', 'error');
     return;
   }
 
   state.timerStatus = 'running';
-  state.startTime = new Date();
-  state.endTime = null;
+  state.startedAt = new Date();
+  state.completedAt = null;
   state.activeStartedAt = Date.now();
-  state.accumulatedMs = 0;
   state.pausedStartedAt = null;
+  state.accumulatedMs = 0;
   state.pausedSeconds = 0;
+
+  record.status = 'RUNNING';
+  record.stepStartedAt = formatDateTime(state.startedAt);
+  record.stepCompletedAt = '';
+  record.durationSeconds = 0;
+  record.durationDisplay = '00:00:00';
+  record.pausedSeconds = 0;
+  record.notes = els.notesInput.value.trim();
 
   els.startBtn.disabled = true;
   els.pauseBtn.disabled = false;
-  els.finishBtn.disabled = false;
-  els.saveBtn.disabled = true;
-  els.sectionSelect.disabled = true;
-  els.stepSelect.disabled = true;
+  els.completeBtn.disabled = false;
+  els.pauseBtn.textContent = 'Pause';
 
-  els.timerMeta.textContent = `Started at ${formatDateTime(state.startTime)}`;
+  els.timerMeta.textContent = `Started at ${formatDateTime(state.startedAt)}`;
   setMessage('Timer running.', 'info');
 
+  clearTimerInterval();
   state.timerInterval = setInterval(updateRunningTimer, 300);
+  renderSections();
 }
 
 function togglePauseResume() {
   if (state.timerStatus === 'running') {
-    pauseTimer();
+    pauseActiveStep();
     return;
   }
 
   if (state.timerStatus === 'paused') {
-    resumeTimer();
+    resumeActiveStep();
   }
 }
 
-function pauseTimer() {
+function pauseActiveStep() {
+  const record = getActiveRecord();
+
+  if (!record) {
+    return;
+  }
+
   const now = Date.now();
 
   state.accumulatedMs += now - state.activeStartedAt;
@@ -227,14 +320,27 @@ function pauseTimer() {
   state.pausedStartedAt = now;
   state.timerStatus = 'paused';
 
+  record.status = 'PAUSED';
+  record.durationSeconds = getElapsedSeconds();
+  record.durationDisplay = formatDuration(record.durationSeconds);
+  record.notes = els.notesInput.value.trim();
+
   clearTimerInterval();
 
   els.pauseBtn.textContent = 'Resume';
-  els.timerMeta.textContent = `Paused at ${formatDuration(getElapsedSeconds())}`;
-  setMessage('Timer paused. Resume or finish when ready.', 'info');
+  els.timerMeta.textContent = `Paused at ${record.durationDisplay}`;
+  setMessage('Timer paused.', 'info');
+
+  renderSections();
 }
 
-function resumeTimer() {
+function resumeActiveStep() {
+  const record = getActiveRecord();
+
+  if (!record) {
+    return;
+  }
+
   const now = Date.now();
 
   if (state.pausedStartedAt) {
@@ -245,14 +351,27 @@ function resumeTimer() {
   state.activeStartedAt = now;
   state.pausedStartedAt = null;
 
+  record.status = 'RUNNING';
+  record.pausedSeconds = state.pausedSeconds;
+
   els.pauseBtn.textContent = 'Pause';
   els.timerMeta.textContent = 'Timer resumed.';
   setMessage('Timer running.', 'info');
 
+  clearTimerInterval();
   state.timerInterval = setInterval(updateRunningTimer, 300);
+  renderSections();
 }
 
-function finishTimer() {
+async function completeActiveStep() {
+  const step = getActiveStep();
+  const record = getActiveRecord();
+
+  if (!step || !record) {
+    setMessage('Select a step first.', 'error');
+    return;
+  }
+
   const now = Date.now();
 
   if (state.timerStatus === 'running') {
@@ -263,125 +382,130 @@ function finishTimer() {
     state.pausedSeconds += Math.floor((now - state.pausedStartedAt) / 1000);
   }
 
-  state.timerStatus = 'finished';
-  state.endTime = new Date();
-
-  state.activeStartedAt = null;
-  state.pausedStartedAt = null;
+  state.timerStatus = 'completed';
+  state.completedAt = new Date();
 
   clearTimerInterval();
 
-  const elapsedSeconds = getElapsedSeconds();
-  updateTimerDisplay(elapsedSeconds);
+  record.status = 'COMPLETED';
+  record.stepCompletedAt = formatDateTime(state.completedAt);
+  record.durationSeconds = getElapsedSeconds();
+  record.durationDisplay = formatDuration(record.durationSeconds);
+  record.pausedSeconds = state.pausedSeconds;
+  record.notes = els.notesInput.value.trim();
 
+  updateTimerDisplay(record.durationSeconds);
+
+  els.startBtn.disabled = true;
   els.pauseBtn.disabled = true;
-  els.finishBtn.disabled = true;
-  els.saveBtn.disabled = false;
+  els.completeBtn.disabled = true;
   els.pauseBtn.textContent = 'Pause';
+  els.timerMeta.textContent = `Completed at ${record.stepCompletedAt}`;
 
-  els.timerMeta.textContent = `Finished at ${formatDateTime(state.endTime)}`;
-  setMessage('Timer finished. Save step time to record it.', 'info');
+  await saveCompletedStep(step, record);
+
+  state.timerStatus = 'idle';
+  state.startedAt = null;
+  state.completedAt = null;
+  state.activeStartedAt = null;
+  state.pausedStartedAt = null;
+  state.accumulatedMs = 0;
+  state.pausedSeconds = 0;
+
+  renderSummary();
+  renderSections();
 }
 
-async function saveCurrentStep() {
-  if (!state.currentStep || state.timerStatus !== 'finished') {
-    setMessage('Please finish the timer before saving.', 'error');
-    return;
-  }
-
-  const elapsedSeconds = getElapsedSeconds();
+async function saveCompletedStep(step, record) {
+  const sectionTotalSeconds = getSectionTotalSecondsByName(step.sectionName);
+  const grandTotalSeconds = getGrandTotalSeconds();
 
   const payload = {
     sessionId: state.sessionId,
     deviceLabel: els.deviceLabelInput.value.trim(),
-    section: state.currentStep.sectionName,
-    stepName: state.currentStep.stepName,
-    startTime: formatDateTime(state.startTime),
-    endTime: formatDateTime(state.endTime),
-    durationSeconds: elapsedSeconds,
-    durationDisplay: formatDuration(elapsedSeconds),
-    pausedSeconds: state.pausedSeconds,
+    sectionOrder: step.sectionOrder,
+    section: step.sectionName,
+    stepOrder: step.stepOrder,
+    stepName: step.stepName,
+    stepStartedAt: record.stepStartedAt,
+    stepCompletedAt: record.stepCompletedAt,
+    durationSeconds: record.durationSeconds,
+    durationDisplay: record.durationDisplay,
+    pausedSeconds: record.pausedSeconds,
     status: 'COMPLETED',
-    notes: els.notesInput.value.trim(),
+    notes: record.notes,
+    sectionTotalSeconds,
+    sectionTotalDisplay: formatDuration(sectionTotalSeconds),
+    grandTotalSeconds,
+    grandTotalDisplay: formatDuration(grandTotalSeconds),
     userAgent: navigator.userAgent
   };
 
-  els.saveBtn.disabled = true;
-  setBusy(true, 'Saving');
-  setMessage('Saving step time...', 'info');
+  setBusy('Saving');
+  setMessage('Saving completed step...', 'info');
 
   try {
     const result = await apiCall('saveStepTime', {
       payload: JSON.stringify(payload)
     });
 
-    setBusy(false, 'Ready');
+    setBusy('Ready');
 
     if (!result || !result.success) {
+      record.status = 'SAVE_FAILED';
       setMessage(result && result.message ? result.message : 'Unable to save step time.', 'error');
-      els.saveBtn.disabled = false;
       return;
     }
 
-    state.savedSteps.push(payload);
-    renderSummary();
-    renderSavedSteps();
-
-    setMessage('Saved successfully to Google Sheet.', 'success');
-    prepareNextStep();
+    setMessage('Step completed and saved to Google Sheet.', 'success');
 
   } catch (error) {
-    setBusy(false, 'Error');
+    setBusy('Error');
+    record.status = 'SAVE_FAILED';
     setMessage(error.message || 'Unable to save step time.', 'error');
-    els.saveBtn.disabled = false;
   }
 }
 
-function prepareNextStep() {
-  state.timerStatus = 'idle';
-  state.startTime = null;
-  state.endTime = null;
-  state.activeStartedAt = null;
-  state.accumulatedMs = 0;
-  state.pausedStartedAt = null;
-  state.pausedSeconds = 0;
-
-  els.sectionSelect.disabled = false;
-  els.stepSelect.disabled = false;
-  els.startBtn.disabled = !state.currentStep;
-  els.pauseBtn.disabled = true;
-  els.finishBtn.disabled = true;
-  els.saveBtn.disabled = true;
-  els.pauseBtn.textContent = 'Pause';
-  els.notesInput.value = '';
-
-  updateTimerDisplay(0);
-  els.timerMeta.textContent = 'Ready for next timing.';
-}
-
-function resetUnsavedTimer() {
-  clearTimerInterval();
-
-  state.timerStatus = 'idle';
-  state.startTime = null;
-  state.endTime = null;
-  state.activeStartedAt = null;
-  state.accumulatedMs = 0;
-  state.pausedStartedAt = null;
-  state.pausedSeconds = 0;
-
-  els.startBtn.disabled = true;
-  els.pauseBtn.disabled = true;
-  els.finishBtn.disabled = true;
-  els.saveBtn.disabled = true;
-  els.pauseBtn.textContent = 'Pause';
-
-  updateTimerDisplay(0);
-  els.timerMeta.textContent = 'Ready';
-}
-
 function updateRunningTimer() {
-  updateTimerDisplay(getElapsedSeconds());
+  const record = getActiveRecord();
+
+  if (!record) {
+    return;
+  }
+
+  const elapsedSeconds = getElapsedSeconds();
+
+  record.durationSeconds = elapsedSeconds;
+  record.durationDisplay = formatDuration(elapsedSeconds);
+  record.notes = els.notesInput.value.trim();
+
+  updateTimerDisplay(elapsedSeconds);
+  renderSummary();
+  renderSections();
+}
+
+function getActiveStep() {
+  if (!state.activeStepKey) {
+    return null;
+  }
+
+  for (const section of state.sections) {
+    for (const step of section.steps) {
+      if (getStepKey(step) === state.activeStepKey) {
+        return step;
+      }
+    }
+  }
+
+  return null;
+}
+
+function getActiveRecord() {
+  if (!state.activeStepKey) {
+    return null;
+  }
+
+  return state.stepRecords[state.activeStepKey] || null;
 }
 
 function getElapsedSeconds() {
@@ -402,88 +526,59 @@ function clearTimerInterval() {
 }
 
 function renderSummary() {
-  const completed = state.savedSteps.length;
-  const grandSeconds = state.savedSteps.reduce((sum, item) => {
-    return sum + Number(item.durationSeconds || 0);
-  }, 0);
+  let completed = 0;
+
+  Object.values(state.stepRecords).forEach(record => {
+    if (record.status === 'COMPLETED') {
+      completed += 1;
+    }
+  });
 
   els.completedCount.textContent = completed;
-  els.grandTotal.textContent = formatDuration(grandSeconds);
-
-  const totals = {};
-
-  state.savedSteps.forEach(item => {
-    if (!totals[item.section]) {
-      totals[item.section] = 0;
-    }
-
-    totals[item.section] += Number(item.durationSeconds || 0);
-  });
-
-  els.sectionTotals.innerHTML = '';
-
-  Object.keys(totals).forEach(section => {
-    const row = document.createElement('div');
-    row.className = 'section-total-row';
-
-    const name = document.createElement('div');
-    name.textContent = section;
-
-    const total = document.createElement('div');
-    total.textContent = formatDuration(totals[section]);
-
-    row.appendChild(name);
-    row.appendChild(total);
-    els.sectionTotals.appendChild(row);
-  });
+  els.grandTotal.textContent = formatDuration(getGrandTotalSeconds());
 }
 
-function renderSavedSteps() {
-  if (!state.savedSteps.length) {
-    els.savedList.innerHTML = '<div class="empty-state">No steps saved yet.</div>';
-    return;
-  }
-
-  els.savedList.innerHTML = '';
-
-  [...state.savedSteps].reverse().forEach(item => {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'saved-item';
-
-    const top = document.createElement('div');
-    top.className = 'saved-item-top';
-
-    const left = document.createElement('div');
-
-    const step = document.createElement('div');
-    step.className = 'saved-step';
-    step.textContent = item.stepName;
-
-    const section = document.createElement('div');
-    section.className = 'saved-section';
-    section.textContent = item.section;
-
-    left.appendChild(step);
-    left.appendChild(section);
-
-    const duration = document.createElement('div');
-    duration.className = 'saved-duration';
-    duration.textContent = item.durationDisplay;
-
-    top.appendChild(left);
-    top.appendChild(duration);
-
-    wrapper.appendChild(top);
-
-    if (item.notes) {
-      const notes = document.createElement('div');
-      notes.className = 'saved-notes';
-      notes.textContent = item.notes;
-      wrapper.appendChild(notes);
+function getGrandTotalSeconds() {
+  return Object.values(state.stepRecords).reduce((sum, record) => {
+    if (record.status === 'COMPLETED' || record.status === 'RUNNING' || record.status === 'PAUSED') {
+      return sum + Number(record.durationSeconds || 0);
     }
 
-    els.savedList.appendChild(wrapper);
-  });
+    return sum;
+  }, 0);
+}
+
+function getSectionTotalSeconds(section) {
+  return section.steps.reduce((sum, step) => {
+    const record = state.stepRecords[getStepKey(step)];
+
+    if (!record) {
+      return sum;
+    }
+
+    if (record.status === 'COMPLETED' || record.status === 'RUNNING' || record.status === 'PAUSED') {
+      return sum + Number(record.durationSeconds || 0);
+    }
+
+    return sum;
+  }, 0);
+}
+
+function getSectionTotalSecondsByName(sectionName) {
+  const section = state.sections.find(item => item.sectionName === sectionName);
+
+  if (!section) {
+    return 0;
+  }
+
+  return getSectionTotalSeconds(section);
+}
+
+function getSectionCompletedCount(section) {
+  return section.steps.filter(step => {
+    const record = state.stepRecords[getStepKey(step)];
+    return record && record.status === 'COMPLETED';
+  }).length;
 }
 
 function updateTimerDisplay(totalSeconds) {
@@ -524,12 +619,12 @@ function setMessage(message, type) {
   els.saveMessage.className = `message ${type || ''}`;
 }
 
-function setBusy(isBusy, label) {
-  els.connectionStatus.textContent = label || (isBusy ? 'Working' : 'Ready');
+function setBusy(label) {
+  els.connectionStatus.textContent = label || 'Ready';
 }
 
 function revealApp() {
-  const minSplashTime = 1000;
+  const minSplashTime = 800;
 
   setTimeout(function() {
     if (els.appShell) {
@@ -540,6 +635,14 @@ function revealApp() {
       els.splashScreen.classList.add('hidden');
     }
   }, minSplashTime);
+}
+
+function getSectionKey(section) {
+  return `section-${section.sectionOrder}`;
+}
+
+function getStepKey(step) {
+  return `section-${step.sectionOrder}__step-${step.stepOrder}`;
 }
 
 function createSessionId() {
@@ -582,4 +685,13 @@ function apiCall(action, params = {}) {
       }
     }
   });
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
 }
