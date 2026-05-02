@@ -1,4 +1,4 @@
-const CACHE_NAME = 'shift4-step-timer-v2';
+const CACHE_NAME = 'shift4-step-accordion-v1';
 
 const APP_FILES = [
   '/shift4-timer-app/',
