@@ -3,14 +3,17 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbzOChrnwwBw6qQjgxXyZks6
 const state = {
   sessionId: createSessionId(),
   appData: {},
-  installer: null,
-  selectedSite: null,
-  selectedTestType: '',
-  selectedStatus: '',
+  sections: [],
+  currentStep: null,
+  timerStatus: 'idle',
   startTime: null,
   endTime: null,
+  activeStartedAt: null,
+  accumulatedMs: 0,
+  pausedStartedAt: null,
+  pausedSeconds: 0,
   timerInterval: null,
-  elapsedSeconds: 0
+  savedSteps: []
 };
 
 const els = {};
@@ -32,18 +35,18 @@ async function initApp() {
     }
 
     state.appData = result.data || {};
+    state.sections = state.appData.sections || [];
 
     applyConfig();
-    populateSites();
-    populateOptionGroups();
+    populateSections();
 
     setBusy(false, 'Ready');
-    showMessage(els.loginMessage, 'Enter installer code to begin.', 'info');
+    setMessage('Select section and step to begin.', 'info');
     revealApp();
 
   } catch (error) {
     setBusy(false, 'Error');
-    showMessage(els.loginMessage, error.message || 'Unable to load app.', 'error');
+    setMessage(error.message || 'Unable to load app.', 'error');
     revealApp();
   }
 }
@@ -55,50 +58,37 @@ function cacheElements() {
   els.appTitle = document.getElementById('appTitle');
   els.connectionStatus = document.getElementById('connectionStatus');
 
-  els.loginCard = document.getElementById('loginCard');
-  els.installerCodeInput = document.getElementById('installerCodeInput');
-  els.verifyInstallerBtn = document.getElementById('verifyInstallerBtn');
-  els.loginMessage = document.getElementById('loginMessage');
+  els.deviceLabelInput = document.getElementById('deviceLabelInput');
+  els.sectionSelect = document.getElementById('sectionSelect');
+  els.stepSelect = document.getElementById('stepSelect');
+  els.stepNote = document.getElementById('stepNote');
 
-  els.appContent = document.getElementById('appContent');
-  els.signedInUser = document.getElementById('signedInUser');
-  els.resetBtn = document.getElementById('resetBtn');
-
-  els.siteSelect = document.getElementById('siteSelect');
-  els.testTypeGroup = document.getElementById('testTypeGroup');
-  els.notesInput = document.getElementById('notesInput');
-
+  els.activeStepName = document.getElementById('activeStepName');
   els.timerDisplay = document.getElementById('timerDisplay');
   els.timerMeta = document.getElementById('timerMeta');
-  els.startBtn = document.getElementById('startBtn');
-  els.stopBtn = document.getElementById('stopBtn');
 
-  els.statusGroup = document.getElementById('statusGroup');
-  els.submitBtn = document.getElementById('submitBtn');
-  els.submitMessage = document.getElementById('submitMessage');
+  els.startBtn = document.getElementById('startBtn');
+  els.pauseBtn = document.getElementById('pauseBtn');
+  els.finishBtn = document.getElementById('finishBtn');
+  els.saveBtn = document.getElementById('saveBtn');
+
+  els.notesInput = document.getElementById('notesInput');
+  els.saveMessage = document.getElementById('saveMessage');
+
+  els.completedCount = document.getElementById('completedCount');
+  els.grandTotal = document.getElementById('grandTotal');
+  els.sectionTotals = document.getElementById('sectionTotals');
+  els.savedList = document.getElementById('savedList');
 }
 
 function bindEvents() {
-  els.verifyInstallerBtn.addEventListener('click', handleInstallerVerify);
-
-  els.installerCodeInput.addEventListener('keydown', function(event) {
-    if (event.key === 'Enter') {
-      handleInstallerVerify();
-    }
-  });
-
-  els.resetBtn.addEventListener('click', resetApp);
-
-  els.siteSelect.addEventListener('change', function() {
-    const siteCode = els.siteSelect.value;
-    const sites = state.appData.sites || [];
-    state.selectedSite = sites.find(site => site.siteCode === siteCode) || null;
-    validateReadyToStart();
-  });
+  els.sectionSelect.addEventListener('change', handleSectionChange);
+  els.stepSelect.addEventListener('change', handleStepChange);
 
   els.startBtn.addEventListener('click', startTimer);
-  els.stopBtn.addEventListener('click', stopTimer);
-  els.submitBtn.addEventListener('click', submitTimerLog);
+  els.pauseBtn.addEventListener('click', togglePauseResume);
+  els.finishBtn.addEventListener('click', finishTimer);
+  els.saveBtn.addEventListener('click', saveCurrentStep);
 }
 
 function registerServiceWorker() {
@@ -108,350 +98,391 @@ function registerServiceWorker() {
 }
 
 function applyConfig() {
-  const appTitle = state.appData.appName || 'Shift4 Timer';
+  const appTitle = state.appData.appName || 'Shift4 Step Timer';
   document.title = appTitle;
   els.appTitle.textContent = appTitle;
 }
 
-function populateSites() {
-  const sites = state.appData.sites || [];
+function populateSections() {
+  els.sectionSelect.innerHTML = '<option value="">Select section</option>';
 
-  els.siteSelect.innerHTML = '<option value="">Select site</option>';
-
-  sites.forEach(site => {
+  state.sections.forEach(section => {
     const option = document.createElement('option');
-    option.value = site.siteCode;
-    option.textContent = `${site.siteCode} — ${site.siteName}`;
-    els.siteSelect.appendChild(option);
+    option.value = section.sectionName;
+    option.textContent = section.sectionName;
+    els.sectionSelect.appendChild(option);
   });
+
+  els.stepSelect.innerHTML = '<option value="">Select section first</option>';
+  els.stepSelect.disabled = true;
 }
 
-function populateOptionGroups() {
-  const options = state.appData.options || {};
-  const testTypes = options.TestType || [];
-  const statuses = options.Status || [];
+function handleSectionChange() {
+  const sectionName = els.sectionSelect.value;
+  const section = getSelectedSection();
 
-  renderRadioGroup({
-    container: els.testTypeGroup,
-    name: 'testType',
-    options: testTypes,
-    onChange: function(value) {
-      state.selectedTestType = value;
-      validateReadyToStart();
-    }
-  });
+  resetUnsavedTimer();
 
-  renderRadioGroup({
-    container: els.statusGroup,
-    name: 'status',
-    options: statuses,
-    onChange: function(value) {
-      state.selectedStatus = value;
-      validateReadyToSubmit();
-    },
-    statusMode: true
-  });
-}
-
-function renderRadioGroup(config) {
-  const container = config.container;
-  const name = config.name;
-  const options = config.options || [];
-  const onChange = config.onChange;
-  const statusMode = Boolean(config.statusMode);
-
-  container.innerHTML = '';
-
-  options.forEach(option => {
-    const label = document.createElement('label');
-    label.className = statusMode ? 'status-option' : 'radio-option';
-
-    if (statusMode && option.value === 'SUCCESS') {
-      label.classList.add('success');
-    }
-
-    if (statusMode && option.value === 'ISSUE') {
-      label.classList.add('danger');
-    }
-
-    const input = document.createElement('input');
-    input.type = 'radio';
-    input.name = name;
-    input.value = option.value;
-
-    const span = document.createElement('span');
-    span.textContent = option.label;
-
-    input.addEventListener('change', function() {
-      const allLabels = container.querySelectorAll('label');
-      allLabels.forEach(item => item.classList.remove('selected'));
-
-      label.classList.add('selected');
-
-      if (typeof onChange === 'function') {
-        onChange(option.value);
-      }
-    });
-
-    label.appendChild(input);
-    label.appendChild(span);
-    container.appendChild(label);
-  });
-}
-
-async function handleInstallerVerify() {
-  const code = els.installerCodeInput.value.trim();
-
-  clearMessage(els.loginMessage);
-
-  if (!code) {
-    showMessage(els.loginMessage, 'Please enter installer code.', 'error');
+  if (!sectionName || !section) {
+    els.stepSelect.innerHTML = '<option value="">Select section first</option>';
+    els.stepSelect.disabled = true;
+    els.stepNote.textContent = 'Select a section and step to begin.';
+    els.activeStepName.textContent = 'No step selected';
     return;
   }
 
-  setBusy(true, 'Checking');
+  els.stepSelect.disabled = false;
+  els.stepSelect.innerHTML = '<option value="">Select step</option>';
 
-  try {
-    const result = await apiCall('validateInstaller', {
-      installerCode: code
-    });
+  section.steps.forEach(step => {
+    const option = document.createElement('option');
+    option.value = step.stepName;
+    option.textContent = step.stepName;
+    els.stepSelect.appendChild(option);
+  });
 
-    setBusy(false, 'Ready');
+  els.stepNote.textContent = 'Select a step to start timing.';
+  els.activeStepName.textContent = 'No step selected';
+}
 
-    if (!result || !result.success) {
-      showMessage(
-        els.loginMessage,
-        result && result.message ? result.message : 'Invalid installer code.',
-        'error'
-      );
-      return;
-    }
+function handleStepChange() {
+  resetUnsavedTimer();
 
-    state.installer = result.installer;
-    showApp();
+  const step = getSelectedStep();
 
-  } catch (error) {
-    setBusy(false, 'Error');
-    showMessage(
-      els.loginMessage,
-      error.message || 'Unable to validate installer.',
-      'error'
-    );
+  if (!step) {
+    state.currentStep = null;
+    els.stepNote.textContent = 'Select a step to start timing.';
+    els.activeStepName.textContent = 'No step selected';
+    els.startBtn.disabled = true;
+    return;
   }
+
+  state.currentStep = step;
+  els.stepNote.textContent = step.notes || 'No notes for this step.';
+  els.activeStepName.textContent = step.stepName;
+  els.startBtn.disabled = false;
+  setMessage('Ready to start timer.', 'info');
 }
 
-function showApp() {
-  els.loginCard.classList.add('hidden');
-  els.appContent.classList.remove('hidden');
-
-  els.signedInUser.textContent =
-    `${state.installer.installerName} • ${state.installer.installerEmail}`;
-
-  showMessage(els.submitMessage, 'Select site, test type, then start timer.', 'info');
+function getSelectedSection() {
+  const sectionName = els.sectionSelect.value;
+  return state.sections.find(section => section.sectionName === sectionName) || null;
 }
 
-function validateReadyToStart() {
-  const ready =
-    Boolean(state.installer) &&
-    Boolean(state.selectedSite) &&
-    Boolean(state.selectedTestType) &&
-    !state.startTime;
+function getSelectedStep() {
+  const section = getSelectedSection();
+  const stepName = els.stepSelect.value;
 
-  els.startBtn.disabled = !ready;
-}
+  if (!section || !stepName) {
+    return null;
+  }
 
-function validateReadyToSubmit() {
-  const ready =
-    Boolean(state.installer) &&
-    Boolean(state.selectedSite) &&
-    Boolean(state.selectedTestType) &&
-    Boolean(state.startTime) &&
-    Boolean(state.endTime) &&
-    Boolean(state.selectedStatus);
-
-  els.submitBtn.disabled = !ready;
+  return section.steps.find(step => step.stepName === stepName) || null;
 }
 
 function startTimer() {
-  if (!state.selectedSite || !state.selectedTestType) {
-    showMessage(els.submitMessage, 'Please select site and test type first.', 'error');
+  if (!state.currentStep) {
+    setMessage('Please select a section and step first.', 'error');
     return;
   }
 
+  state.timerStatus = 'running';
   state.startTime = new Date();
   state.endTime = null;
-  state.elapsedSeconds = 0;
-  state.selectedStatus = '';
-
-  clearStatusSelection();
+  state.activeStartedAt = Date.now();
+  state.accumulatedMs = 0;
+  state.pausedStartedAt = null;
+  state.pausedSeconds = 0;
 
   els.startBtn.disabled = true;
-  els.stopBtn.disabled = false;
-  els.submitBtn.disabled = true;
-  els.siteSelect.disabled = true;
-
-  disableRadioGroup(els.testTypeGroup, true);
-  disableRadioGroup(els.statusGroup, true);
+  els.pauseBtn.disabled = false;
+  els.finishBtn.disabled = false;
+  els.saveBtn.disabled = true;
+  els.sectionSelect.disabled = true;
+  els.stepSelect.disabled = true;
 
   els.timerMeta.textContent = `Started at ${formatDateTime(state.startTime)}`;
-  showMessage(els.submitMessage, 'Timer running.', 'info');
+  setMessage('Timer running.', 'info');
 
-  state.timerInterval = setInterval(function() {
-    const now = new Date();
-    state.elapsedSeconds = Math.floor((now.getTime() - state.startTime.getTime()) / 1000);
-    updateTimerDisplay(state.elapsedSeconds);
-  }, 500);
+  state.timerInterval = setInterval(updateRunningTimer, 300);
 }
 
-function stopTimer() {
-  if (!state.startTime) {
+function togglePauseResume() {
+  if (state.timerStatus === 'running') {
+    pauseTimer();
     return;
   }
 
+  if (state.timerStatus === 'paused') {
+    resumeTimer();
+  }
+}
+
+function pauseTimer() {
+  const now = Date.now();
+
+  state.accumulatedMs += now - state.activeStartedAt;
+  state.activeStartedAt = null;
+  state.pausedStartedAt = now;
+  state.timerStatus = 'paused';
+
+  clearTimerInterval();
+
+  els.pauseBtn.textContent = 'Resume';
+  els.timerMeta.textContent = `Paused at ${formatDuration(getElapsedSeconds())}`;
+  setMessage('Timer paused. Resume or finish when ready.', 'info');
+}
+
+function resumeTimer() {
+  const now = Date.now();
+
+  if (state.pausedStartedAt) {
+    state.pausedSeconds += Math.floor((now - state.pausedStartedAt) / 1000);
+  }
+
+  state.timerStatus = 'running';
+  state.activeStartedAt = now;
+  state.pausedStartedAt = null;
+
+  els.pauseBtn.textContent = 'Pause';
+  els.timerMeta.textContent = 'Timer resumed.';
+  setMessage('Timer running.', 'info');
+
+  state.timerInterval = setInterval(updateRunningTimer, 300);
+}
+
+function finishTimer() {
+  const now = Date.now();
+
+  if (state.timerStatus === 'running') {
+    state.accumulatedMs += now - state.activeStartedAt;
+  }
+
+  if (state.timerStatus === 'paused' && state.pausedStartedAt) {
+    state.pausedSeconds += Math.floor((now - state.pausedStartedAt) / 1000);
+  }
+
+  state.timerStatus = 'finished';
   state.endTime = new Date();
 
-  if (state.timerInterval) {
-    clearInterval(state.timerInterval);
-    state.timerInterval = null;
-  }
+  state.activeStartedAt = null;
+  state.pausedStartedAt = null;
 
-  state.elapsedSeconds = Math.floor(
-    (state.endTime.getTime() - state.startTime.getTime()) / 1000
-  );
+  clearTimerInterval();
 
-  updateTimerDisplay(state.elapsedSeconds);
+  const elapsedSeconds = getElapsedSeconds();
+  updateTimerDisplay(elapsedSeconds);
 
-  els.stopBtn.disabled = true;
-  disableRadioGroup(els.statusGroup, false);
+  els.pauseBtn.disabled = true;
+  els.finishBtn.disabled = true;
+  els.saveBtn.disabled = false;
+  els.pauseBtn.textContent = 'Pause';
 
-  els.timerMeta.textContent =
-    `Started ${formatDateTime(state.startTime)} • Stopped ${formatDateTime(state.endTime)}`;
-
-  showMessage(els.submitMessage, 'Select result status, then submit.', 'info');
-  validateReadyToSubmit();
+  els.timerMeta.textContent = `Finished at ${formatDateTime(state.endTime)}`;
+  setMessage('Timer finished. Save step time to record it.', 'info');
 }
 
-async function submitTimerLog() {
-  if (!state.endTime || !state.selectedStatus) {
-    showMessage(els.submitMessage, 'Please stop timer and select result status.', 'error');
+async function saveCurrentStep() {
+  if (!state.currentStep || state.timerStatus !== 'finished') {
+    setMessage('Please finish the timer before saving.', 'error');
     return;
   }
+
+  const elapsedSeconds = getElapsedSeconds();
 
   const payload = {
     sessionId: state.sessionId,
-    installerCode: state.installer.installerCode,
-    installerName: state.installer.installerName,
-    installerEmail: state.installer.installerEmail,
-    siteCode: state.selectedSite.siteCode,
-    siteName: state.selectedSite.siteName,
-    testType: state.selectedTestType,
+    deviceLabel: els.deviceLabelInput.value.trim(),
+    section: state.currentStep.sectionName,
+    stepName: state.currentStep.stepName,
     startTime: formatDateTime(state.startTime),
     endTime: formatDateTime(state.endTime),
-    durationSeconds: state.elapsedSeconds,
-    durationDisplay: formatDuration(state.elapsedSeconds),
-    status: state.selectedStatus,
+    durationSeconds: elapsedSeconds,
+    durationDisplay: formatDuration(elapsedSeconds),
+    pausedSeconds: state.pausedSeconds,
+    status: 'COMPLETED',
     notes: els.notesInput.value.trim(),
     userAgent: navigator.userAgent
   };
 
+  els.saveBtn.disabled = true;
   setBusy(true, 'Saving');
-  els.submitBtn.disabled = true;
+  setMessage('Saving step time...', 'info');
 
   try {
-    const result = await apiCall('saveTimerLog', {
+    const result = await apiCall('saveStepTime', {
       payload: JSON.stringify(payload)
     });
 
     setBusy(false, 'Ready');
 
     if (!result || !result.success) {
-      showMessage(
-        els.submitMessage,
-        result && result.message ? result.message : 'Unable to save timer log.',
-        'error'
-      );
-      els.submitBtn.disabled = false;
+      setMessage(result && result.message ? result.message : 'Unable to save step time.', 'error');
+      els.saveBtn.disabled = false;
       return;
     }
 
-    showMessage(els.submitMessage, 'Saved successfully to Google Sheet.', 'success');
-    lockAfterSubmit();
+    state.savedSteps.push(payload);
+    renderSummary();
+    renderSavedSteps();
+
+    setMessage('Saved successfully to Google Sheet.', 'success');
+    prepareNextStep();
 
   } catch (error) {
     setBusy(false, 'Error');
-    showMessage(
-      els.submitMessage,
-      error.message || 'Unable to save timer log.',
-      'error'
-    );
-    els.submitBtn.disabled = false;
+    setMessage(error.message || 'Unable to save step time.', 'error');
+    els.saveBtn.disabled = false;
   }
 }
 
-function lockAfterSubmit() {
-  els.submitBtn.disabled = true;
-  els.startBtn.disabled = true;
-  els.stopBtn.disabled = true;
-  els.notesInput.disabled = true;
-  disableRadioGroup(els.statusGroup, true);
-}
-
-function resetApp() {
-  if (state.timerInterval) {
-    clearInterval(state.timerInterval);
-  }
-
-  state.selectedSite = null;
-  state.selectedTestType = '';
-  state.selectedStatus = '';
+function prepareNextStep() {
+  state.timerStatus = 'idle';
   state.startTime = null;
   state.endTime = null;
-  state.elapsedSeconds = 0;
-  state.timerInterval = null;
+  state.activeStartedAt = null;
+  state.accumulatedMs = 0;
+  state.pausedStartedAt = null;
+  state.pausedSeconds = 0;
 
-  els.siteSelect.disabled = false;
-  els.siteSelect.value = '';
-  els.notesInput.disabled = false;
+  els.sectionSelect.disabled = false;
+  els.stepSelect.disabled = false;
+  els.startBtn.disabled = !state.currentStep;
+  els.pauseBtn.disabled = true;
+  els.finishBtn.disabled = true;
+  els.saveBtn.disabled = true;
+  els.pauseBtn.textContent = 'Pause';
   els.notesInput.value = '';
 
-  clearRadioGroup(els.testTypeGroup);
-  clearRadioGroup(els.statusGroup);
+  updateTimerDisplay(0);
+  els.timerMeta.textContent = 'Ready for next timing.';
+}
 
-  disableRadioGroup(els.testTypeGroup, false);
-  disableRadioGroup(els.statusGroup, false);
+function resetUnsavedTimer() {
+  clearTimerInterval();
+
+  state.timerStatus = 'idle';
+  state.startTime = null;
+  state.endTime = null;
+  state.activeStartedAt = null;
+  state.accumulatedMs = 0;
+  state.pausedStartedAt = null;
+  state.pausedSeconds = 0;
 
   els.startBtn.disabled = true;
-  els.stopBtn.disabled = true;
-  els.submitBtn.disabled = true;
+  els.pauseBtn.disabled = true;
+  els.finishBtn.disabled = true;
+  els.saveBtn.disabled = true;
+  els.pauseBtn.textContent = 'Pause';
 
   updateTimerDisplay(0);
-  els.timerMeta.textContent = 'Not started';
-
-  showMessage(els.submitMessage, 'Select site, test type, then start timer.', 'info');
+  els.timerMeta.textContent = 'Ready';
 }
 
-function clearStatusSelection() {
-  state.selectedStatus = '';
-  clearRadioGroup(els.statusGroup);
+function updateRunningTimer() {
+  updateTimerDisplay(getElapsedSeconds());
 }
 
-function clearRadioGroup(container) {
-  const inputs = container.querySelectorAll('input[type="radio"]');
-  const labels = container.querySelectorAll('label');
+function getElapsedSeconds() {
+  let totalMs = state.accumulatedMs;
 
-  inputs.forEach(input => {
-    input.checked = false;
+  if (state.timerStatus === 'running' && state.activeStartedAt) {
+    totalMs += Date.now() - state.activeStartedAt;
+  }
+
+  return Math.floor(totalMs / 1000);
+}
+
+function clearTimerInterval() {
+  if (state.timerInterval) {
+    clearInterval(state.timerInterval);
+    state.timerInterval = null;
+  }
+}
+
+function renderSummary() {
+  const completed = state.savedSteps.length;
+  const grandSeconds = state.savedSteps.reduce((sum, item) => {
+    return sum + Number(item.durationSeconds || 0);
+  }, 0);
+
+  els.completedCount.textContent = completed;
+  els.grandTotal.textContent = formatDuration(grandSeconds);
+
+  const totals = {};
+
+  state.savedSteps.forEach(item => {
+    if (!totals[item.section]) {
+      totals[item.section] = 0;
+    }
+
+    totals[item.section] += Number(item.durationSeconds || 0);
   });
 
-  labels.forEach(label => {
-    label.classList.remove('selected');
+  els.sectionTotals.innerHTML = '';
+
+  Object.keys(totals).forEach(section => {
+    const row = document.createElement('div');
+    row.className = 'section-total-row';
+
+    const name = document.createElement('div');
+    name.textContent = section;
+
+    const total = document.createElement('div');
+    total.textContent = formatDuration(totals[section]);
+
+    row.appendChild(name);
+    row.appendChild(total);
+    els.sectionTotals.appendChild(row);
   });
 }
 
-function disableRadioGroup(container, disabled) {
-  const inputs = container.querySelectorAll('input[type="radio"]');
-  inputs.forEach(input => {
-    input.disabled = disabled;
+function renderSavedSteps() {
+  if (!state.savedSteps.length) {
+    els.savedList.innerHTML = '<div class="empty-state">No steps saved yet.</div>';
+    return;
+  }
+
+  els.savedList.innerHTML = '';
+
+  [...state.savedSteps].reverse().forEach(item => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'saved-item';
+
+    const top = document.createElement('div');
+    top.className = 'saved-item-top';
+
+    const left = document.createElement('div');
+
+    const step = document.createElement('div');
+    step.className = 'saved-step';
+    step.textContent = item.stepName;
+
+    const section = document.createElement('div');
+    section.className = 'saved-section';
+    section.textContent = item.section;
+
+    left.appendChild(step);
+    left.appendChild(section);
+
+    const duration = document.createElement('div');
+    duration.className = 'saved-duration';
+    duration.textContent = item.durationDisplay;
+
+    top.appendChild(left);
+    top.appendChild(duration);
+
+    wrapper.appendChild(top);
+
+    if (item.notes) {
+      const notes = document.createElement('div');
+      notes.className = 'saved-notes';
+      notes.textContent = item.notes;
+      wrapper.appendChild(notes);
+    }
+
+    els.savedList.appendChild(wrapper);
   });
 }
 
@@ -488,25 +519,17 @@ function formatDateTime(date) {
   }).format(date);
 }
 
-function showMessage(element, message, type) {
-  element.textContent = message || '';
-  element.className = `message ${type || ''}`;
-}
-
-function clearMessage(element) {
-  showMessage(element, '', '');
+function setMessage(message, type) {
+  els.saveMessage.textContent = message || '';
+  els.saveMessage.className = `message ${type || ''}`;
 }
 
 function setBusy(isBusy, label) {
   els.connectionStatus.textContent = label || (isBusy ? 'Working' : 'Ready');
-
-  if (els.verifyInstallerBtn) {
-    els.verifyInstallerBtn.disabled = Boolean(isBusy);
-  }
 }
 
 function revealApp() {
-  const minSplashTime = 1600;
+  const minSplashTime = 1000;
 
   setTimeout(function() {
     if (els.appShell) {
