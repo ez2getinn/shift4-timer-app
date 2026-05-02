@@ -57,20 +57,6 @@
 
     <main class="app-main">
 
-      <section class="card">
-        <div class="section-title">Device / Location</div>
-        <p class="muted">Optional label for this timing session.</p>
-
-        <label class="field-label" for="deviceLabelInput">Device / Location Name</label>
-        <input
-          id="deviceLabelInput"
-          class="input"
-          type="text"
-          placeholder="Example: Site A - Lane 1"
-          autocomplete="off"
-        >
-      </section>
-
       <section class="card top-summary-card">
         <div class="section-title">Session Summary</div>
 
@@ -85,35 +71,6 @@
             <div class="summary-value" id="grandTotal">00:00:00</div>
           </div>
         </div>
-      </section>
-
-      <section class="current-step-panel card">
-        <div class="section-title">Active Step Timer</div>
-
-        <div class="active-step" id="activeStepName">No step selected</div>
-        <div class="timer-display" id="timerDisplay">00:00:00</div>
-
-        <div class="button-row three-buttons">
-          <button class="btn btn-success" id="startBtn" type="button" disabled>
-            Start
-          </button>
-
-          <button class="btn btn-warning" id="pauseBtn" type="button" disabled>
-            Pause
-          </button>
-
-          <button class="btn btn-danger" id="completeBtn" type="button" disabled>
-            Complete
-          </button>
-        </div>
-
-        <label class="field-label" for="notesInput">Step Notes</label>
-        <textarea
-          id="notesInput"
-          class="input textarea"
-          placeholder="Optional notes for this step"
-          rows="3"
-        ></textarea>
       </section>
 
       <section class="sections-list" id="sectionsList">
