@@ -65,64 +65,12 @@
           id="deviceLabelInput"
           class="input"
           type="text"
-          placeholder="Example: Test Site - Lane 1"
+          placeholder="Example: Site A - Lane 1"
           autocomplete="off"
         >
       </section>
 
-      <section class="card">
-        <div class="section-title">Select Step</div>
-
-        <label class="field-label" for="sectionSelect">Section</label>
-        <select id="sectionSelect" class="input">
-          <option value="">Loading sections...</option>
-        </select>
-
-        <label class="field-label" for="stepSelect">Step</label>
-        <select id="stepSelect" class="input" disabled>
-          <option value="">Select section first</option>
-        </select>
-
-        <div class="step-note" id="stepNote">Select a section and step to begin.</div>
-      </section>
-
-      <section class="card timer-card">
-        <div class="section-title">Current Timer</div>
-
-        <div class="active-step" id="activeStepName">No step selected</div>
-        <div class="timer-display" id="timerDisplay">00:00:00</div>
-        <div class="timer-meta" id="timerMeta">Ready</div>
-
-        <div class="button-row three-buttons">
-          <button class="btn btn-success" id="startBtn" type="button" disabled>
-            Start
-          </button>
-
-          <button class="btn btn-warning" id="pauseBtn" type="button" disabled>
-            Pause
-          </button>
-
-          <button class="btn btn-danger" id="finishBtn" type="button" disabled>
-            Finish
-          </button>
-        </div>
-
-        <label class="field-label" for="notesInput">Step Notes</label>
-        <textarea
-          id="notesInput"
-          class="input textarea"
-          placeholder="Optional notes for this step"
-          rows="3"
-        ></textarea>
-
-        <button class="btn btn-primary" id="saveBtn" type="button" disabled>
-          Save Step Time
-        </button>
-
-        <div class="message" id="saveMessage"></div>
-      </section>
-
-      <section class="card">
+      <section class="card top-summary-card">
         <div class="section-title">Session Summary</div>
 
         <div class="summary-grid">
@@ -136,14 +84,44 @@
             <div class="summary-value" id="grandTotal">00:00:00</div>
           </div>
         </div>
-
-        <div class="section-totals" id="sectionTotals"></div>
       </section>
 
-      <section class="card">
-        <div class="section-title">Saved Steps</div>
-        <div class="saved-list" id="savedList">
-          <div class="empty-state">No steps saved yet.</div>
+      <section class="current-step-panel card">
+        <div class="section-title">Active Step Timer</div>
+
+        <div class="active-step" id="activeStepName">No step selected</div>
+        <div class="timer-display" id="timerDisplay">00:00:00</div>
+        <div class="timer-meta" id="timerMeta">Choose a step below to start.</div>
+
+        <div class="button-row three-buttons">
+          <button class="btn btn-success" id="startBtn" type="button" disabled>
+            Start
+          </button>
+
+          <button class="btn btn-warning" id="pauseBtn" type="button" disabled>
+            Pause
+          </button>
+
+          <button class="btn btn-danger" id="completeBtn" type="button" disabled>
+            Complete
+          </button>
+        </div>
+
+        <label class="field-label" for="notesInput">Step Notes</label>
+        <textarea
+          id="notesInput"
+          class="input textarea"
+          placeholder="Optional notes for this step"
+          rows="3"
+        ></textarea>
+
+        <div class="message" id="saveMessage"></div>
+      </section>
+
+      <section class="sections-list" id="sectionsList">
+        <div class="card">
+          <div class="section-title">Loading checklist...</div>
+          <p class="muted">Please wait while sections load.</p>
         </div>
       </section>
 
