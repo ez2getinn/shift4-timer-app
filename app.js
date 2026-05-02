@@ -44,12 +44,10 @@ async function initApp() {
     renderSummary();
 
     setBusy('Ready');
-    setTimerMeta('Select a step below to begin timing.');
     revealApp();
 
   } catch (error) {
     setBusy('Error');
-    setTimerMeta(error.message || 'Unable to load app.');
     revealApp();
   }
 }
@@ -68,7 +66,6 @@ function cacheElements() {
 
   els.activeStepName = document.getElementById('activeStepName');
   els.timerDisplay = document.getElementById('timerDisplay');
-  els.timerMeta = document.getElementById('timerMeta');
 
   els.startBtn = document.getElementById('startBtn');
   els.pauseBtn = document.getElementById('pauseBtn');
@@ -214,7 +211,6 @@ function selectStep(step) {
   const stepKey = getStepKey(step);
 
   if ((state.timerStatus === 'running' || state.timerStatus === 'paused') && state.activeStepKey !== stepKey) {
-    setTimerMeta('Pause or complete the current step before selecting another step.');
     return;
   }
 
@@ -227,12 +223,10 @@ function selectStep(step) {
   updateTimerDisplay(record.durationSeconds || 0);
 
   if (record.status === 'COMPLETED') {
-    setTimerMeta(`Completed: ${record.durationDisplay}`);
     els.startBtn.disabled = true;
     els.pauseBtn.disabled = true;
     els.completeBtn.disabled = true;
   } else {
-    setTimerMeta(record.status === 'PAUSED' ? 'Paused.' : 'Ready to start.');
     els.startBtn.disabled = false;
     els.pauseBtn.disabled = true;
     els.completeBtn.disabled = true;
@@ -244,17 +238,11 @@ function selectStep(step) {
 function startActiveStep() {
   const step = getActiveStep();
 
-  if (!step) {
-    setTimerMeta('Select a step first.');
-    return;
-  }
+  if (!step) return;
 
   const record = state.stepRecords[state.activeStepKey];
 
-  if (record.status === 'COMPLETED') {
-    setTimerMeta('This step is already completed.');
-    return;
-  }
+  if (record.status === 'COMPLETED') return;
 
   state.timerStatus = 'running';
   state.startedAt = new Date();
@@ -276,8 +264,6 @@ function startActiveStep() {
   els.pauseBtn.disabled = false;
   els.completeBtn.disabled = false;
   els.pauseBtn.textContent = 'Pause';
-
-  setTimerMeta(`Started at ${formatDateTime(state.startedAt)}`);
 
   clearTimerInterval();
   state.timerInterval = setInterval(updateRunningTimer, 300);
@@ -315,7 +301,6 @@ function pauseActiveStep() {
   clearTimerInterval();
 
   els.pauseBtn.textContent = 'Resume';
-  setTimerMeta(`Paused at ${record.durationDisplay}`);
 
   renderSections();
 }
@@ -339,7 +324,6 @@ function resumeActiveStep() {
   record.pausedSeconds = state.pausedSeconds;
 
   els.pauseBtn.textContent = 'Pause';
-  setTimerMeta('Timer resumed.');
 
   clearTimerInterval();
   state.timerInterval = setInterval(updateRunningTimer, 300);
@@ -350,10 +334,7 @@ async function completeActiveStep() {
   const step = getActiveStep();
   const record = getActiveRecord();
 
-  if (!step || !record) {
-    setTimerMeta('Select a step first.');
-    return;
-  }
+  if (!step || !record) return;
 
   const now = Date.now();
 
@@ -383,8 +364,6 @@ async function completeActiveStep() {
   els.pauseBtn.disabled = true;
   els.completeBtn.disabled = true;
   els.pauseBtn.textContent = 'Pause';
-
-  setTimerMeta(`Completed at ${record.stepCompletedAt}`);
 
   await saveCompletedStep(step, record);
 
@@ -426,7 +405,6 @@ async function saveCompletedStep(step, record) {
   };
 
   setBusy('Saving');
-  setTimerMeta('Saving completed step...');
 
   try {
     const result = await apiCall('saveStepTime', {
@@ -437,16 +415,12 @@ async function saveCompletedStep(step, record) {
 
     if (!result || !result.success) {
       record.status = 'SAVE_FAILED';
-      setTimerMeta(result && result.message ? result.message : 'Unable to save step time.');
       return;
     }
-
-    setTimerMeta('Step completed and saved.');
 
   } catch (error) {
     setBusy('Error');
     record.status = 'SAVE_FAILED';
-    setTimerMeta(error.message || 'Unable to save step time.');
   }
 }
 
@@ -580,10 +554,6 @@ function formatDateTime(date) {
     minute: '2-digit',
     second: '2-digit'
   }).format(date);
-}
-
-function setTimerMeta(message) {
-  els.timerMeta.textContent = message || '';
 }
 
 function setBusy(label) {
