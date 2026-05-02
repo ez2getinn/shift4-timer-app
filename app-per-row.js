@@ -8,6 +8,7 @@ const state = {
   activeStepKey: '',
   timerStatus: 'idle',
   startedAt: null,
+  stoppedAt: null,
   completedAt: null,
   activeStartedAt: null,
   pausedStartedAt: null,
@@ -92,6 +93,7 @@ function initializeSections() {
         pausedSeconds: 0,
         status: 'NOT_STARTED',
         stepStartedAt: '',
+        stepStoppedAt: '',
         stepCompletedAt: ''
       };
     });
@@ -180,10 +182,26 @@ function createStepRow(step) {
     row.classList.add('completed');
   }
 
-  const canStart = record.status === 'NOT_STARTED' || record.status === 'SAVE_FAILED';
-  const canPause = state.activeStepKey === stepKey && state.timerStatus === 'running';
-  const canResume = state.activeStepKey === stepKey && state.timerStatus === 'paused';
-  const canComplete = state.activeStepKey === stepKey && (state.timerStatus === 'running' || state.timerStatus === 'paused');
+  const hasActiveDifferentStep =
+    state.activeStepKey &&
+    state.activeStepKey !== stepKey &&
+    ['running', 'paused', 'stopped'].includes(state.timerStatus);
+
+  const canStart =
+    !hasActiveDifferentStep &&
+    (record.status === 'NOT_STARTED' || record.status === 'SAVE_FAILED');
+
+  const canPause =
+    state.activeStepKey === stepKey &&
+    state.timerStatus === 'running';
+
+  const canStop =
+    state.activeStepKey === stepKey &&
+    (state.timerStatus === 'running' || state.timerStatus === 'paused');
+
+  const canComplete =
+    state.activeStepKey === stepKey &&
+    state.timerStatus === 'stopped';
 
   row.innerHTML = `
     <div class="step-check">${record.status === 'COMPLETED' ? '✓' : ''}</div>
@@ -206,11 +224,21 @@ function createStepRow(step) {
         <button
           class="step-btn pause-step"
           type="button"
-          data-action="${canResume ? 'resume' : 'pause'}"
+          data-action="pause"
           data-step-key="${escapeHtml(stepKey)}"
-          ${canPause || canResume ? '' : 'disabled'}
+          ${canPause ? '' : 'disabled'}
         >
-          ${canResume ? 'Resume' : 'Pause'}
+          Pause
+        </button>
+
+        <button
+          class="step-btn stop-step"
+          type="button"
+          data-action="stop"
+          data-step-key="${escapeHtml(stepKey)}"
+          ${canStop ? '' : 'disabled'}
+        >
+          Stop
         </button>
 
         <button
@@ -243,8 +271,8 @@ function createStepRow(step) {
         pauseActiveStep();
       }
 
-      if (action === 'resume') {
-        resumeActiveStep();
+      if (action === 'stop') {
+        stopActiveStep();
       }
 
       if (action === 'complete') {
@@ -257,7 +285,7 @@ function createStepRow(step) {
 }
 
 function startStepByKey(stepKey) {
-  if (state.timerStatus === 'running' || state.timerStatus === 'paused') {
+  if (['running', 'paused', 'stopped', 'saving'].includes(state.timerStatus)) {
     return;
   }
 
@@ -271,6 +299,7 @@ function startStepByKey(stepKey) {
   state.activeStepKey = stepKey;
   state.timerStatus = 'running';
   state.startedAt = new Date();
+  state.stoppedAt = null;
   state.completedAt = null;
   state.activeStartedAt = Date.now();
   state.pausedStartedAt = null;
@@ -279,6 +308,7 @@ function startStepByKey(stepKey) {
 
   record.status = 'RUNNING';
   record.stepStartedAt = formatDateTime(state.startedAt);
+  record.stepStoppedAt = '';
   record.stepCompletedAt = '';
   record.durationSeconds = 0;
   record.durationDisplay = '00:00:00';
@@ -314,38 +344,10 @@ function pauseActiveStep() {
   renderSections();
 }
 
-function resumeActiveStep() {
+function stopActiveStep() {
   const record = getActiveRecord();
 
-  if (!record || state.timerStatus !== 'paused') {
-    return;
-  }
-
-  const now = Date.now();
-
-  if (state.pausedStartedAt) {
-    state.pausedSeconds += Math.floor((now - state.pausedStartedAt) / 1000);
-  }
-
-  state.timerStatus = 'running';
-  state.activeStartedAt = now;
-  state.pausedStartedAt = null;
-
-  record.status = 'RUNNING';
-  record.pausedSeconds = state.pausedSeconds;
-
-  clearTimerInterval();
-  state.timerInterval = setInterval(updateRunningTimer, 300);
-
-  renderSummary();
-  renderSections();
-}
-
-async function completeActiveStep() {
-  const step = getActiveStep();
-  const record = getActiveRecord();
-
-  if (!step || !record) {
+  if (!record || !['running', 'paused'].includes(state.timerStatus)) {
     return;
   }
 
@@ -359,16 +361,35 @@ async function completeActiveStep() {
     state.pausedSeconds += Math.floor((now - state.pausedStartedAt) / 1000);
   }
 
-  state.completedAt = new Date();
-  state.timerStatus = 'saving';
+  state.stoppedAt = new Date();
+  state.timerStatus = 'stopped';
+  state.activeStartedAt = null;
+  state.pausedStartedAt = null;
 
-  clearTimerInterval();
-
-  record.status = 'COMPLETED';
-  record.stepCompletedAt = formatDateTime(state.completedAt);
+  record.status = 'STOPPED';
+  record.stepStoppedAt = formatDateTime(state.stoppedAt);
   record.durationSeconds = getElapsedSeconds();
   record.durationDisplay = formatDuration(record.durationSeconds);
   record.pausedSeconds = state.pausedSeconds;
+
+  clearTimerInterval();
+  renderSummary();
+  renderSections();
+}
+
+async function completeActiveStep() {
+  const step = getActiveStep();
+  const record = getActiveRecord();
+
+  if (!step || !record || state.timerStatus !== 'stopped') {
+    return;
+  }
+
+  state.completedAt = new Date();
+  state.timerStatus = 'saving';
+
+  record.status = 'COMPLETED';
+  record.stepCompletedAt = formatDateTime(state.completedAt);
 
   renderSummary();
   renderSections();
@@ -378,6 +399,7 @@ async function completeActiveStep() {
   state.timerStatus = 'idle';
   state.activeStepKey = '';
   state.startedAt = null;
+  state.stoppedAt = null;
   state.completedAt = null;
   state.activeStartedAt = null;
   state.pausedStartedAt = null;
@@ -510,7 +532,7 @@ function renderSummary() {
 
 function getGrandTotalSeconds() {
   return Object.values(state.stepRecords).reduce((sum, record) => {
-    if (record.status === 'COMPLETED' || record.status === 'RUNNING' || record.status === 'PAUSED') {
+    if (['COMPLETED', 'RUNNING', 'PAUSED', 'STOPPED'].includes(record.status)) {
       return sum + Number(record.durationSeconds || 0);
     }
 
@@ -526,7 +548,7 @@ function getSectionTotalSeconds(section) {
       return sum;
     }
 
-    if (record.status === 'COMPLETED' || record.status === 'RUNNING' || record.status === 'PAUSED') {
+    if (['COMPLETED', 'RUNNING', 'PAUSED', 'STOPPED'].includes(record.status)) {
       return sum + Number(record.durationSeconds || 0);
     }
 
