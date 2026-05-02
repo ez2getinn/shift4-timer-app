@@ -1,4 +1,4 @@
-const CACHE_NAME = 'shift4-step-accordion-v1';
+const CACHE_NAME = 'shift4-step-per-row-v1';
 
 const APP_FILES = [
   '/shift4-timer-app/',
@@ -15,6 +15,7 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => cache.addAll(APP_FILES))
   );
+
   self.skipWaiting();
 });
 
