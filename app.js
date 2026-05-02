@@ -44,12 +44,12 @@ async function initApp() {
     renderSummary();
 
     setBusy('Ready');
-    setMessage('Select a step below to begin timing.', 'info');
+    setTimerMeta('Select a step below to begin timing.');
     revealApp();
 
   } catch (error) {
     setBusy('Error');
-    setMessage(error.message || 'Unable to load app.', 'error');
+    setTimerMeta(error.message || 'Unable to load app.');
     revealApp();
   }
 }
@@ -75,8 +75,6 @@ function cacheElements() {
   els.completeBtn = document.getElementById('completeBtn');
 
   els.notesInput = document.getElementById('notesInput');
-  els.saveMessage = document.getElementById('saveMessage');
-
   els.sectionsList = document.getElementById('sectionsList');
 }
 
@@ -193,13 +191,8 @@ function createStepRow(step) {
   const row = document.createElement('div');
   row.className = 'step-row';
 
-  if (isActive) {
-    row.classList.add('active');
-  }
-
-  if (isCompleted) {
-    row.classList.add('completed');
-  }
+  if (isActive) row.classList.add('active');
+  if (isCompleted) row.classList.add('completed');
 
   row.innerHTML = `
     <div class="step-check">${isCompleted ? '✓' : ''}</div>
@@ -220,32 +213,29 @@ function createStepRow(step) {
 function selectStep(step) {
   const stepKey = getStepKey(step);
 
-  if (state.timerStatus === 'running' || state.timerStatus === 'paused') {
-    if (state.activeStepKey !== stepKey) {
-      setMessage('Pause or complete the current step before selecting another step.', 'error');
-      return;
-    }
+  if ((state.timerStatus === 'running' || state.timerStatus === 'paused') && state.activeStepKey !== stepKey) {
+    setTimerMeta('Pause or complete the current step before selecting another step.');
+    return;
   }
 
   state.activeStepKey = stepKey;
 
   const record = state.stepRecords[stepKey];
+
   els.activeStepName.textContent = `${step.sectionName} — ${step.stepName}`;
   els.notesInput.value = record.notes || '';
   updateTimerDisplay(record.durationSeconds || 0);
 
   if (record.status === 'COMPLETED') {
-    els.timerMeta.textContent = `Completed: ${record.durationDisplay}`;
+    setTimerMeta(`Completed: ${record.durationDisplay}`);
     els.startBtn.disabled = true;
     els.pauseBtn.disabled = true;
     els.completeBtn.disabled = true;
-    setMessage('This step is already completed.', 'success');
   } else {
-    els.timerMeta.textContent = record.status === 'PAUSED' ? 'Paused.' : 'Ready to start.';
+    setTimerMeta(record.status === 'PAUSED' ? 'Paused.' : 'Ready to start.');
     els.startBtn.disabled = false;
     els.pauseBtn.disabled = true;
     els.completeBtn.disabled = true;
-    setMessage('Ready to start selected step.', 'info');
   }
 
   renderSections();
@@ -255,14 +245,14 @@ function startActiveStep() {
   const step = getActiveStep();
 
   if (!step) {
-    setMessage('Select a step first.', 'error');
+    setTimerMeta('Select a step first.');
     return;
   }
 
   const record = state.stepRecords[state.activeStepKey];
 
   if (record.status === 'COMPLETED') {
-    setMessage('This step is already completed.', 'error');
+    setTimerMeta('This step is already completed.');
     return;
   }
 
@@ -287,8 +277,7 @@ function startActiveStep() {
   els.completeBtn.disabled = false;
   els.pauseBtn.textContent = 'Pause';
 
-  els.timerMeta.textContent = `Started at ${formatDateTime(state.startedAt)}`;
-  setMessage('Timer running.', 'info');
+  setTimerMeta(`Started at ${formatDateTime(state.startedAt)}`);
 
   clearTimerInterval();
   state.timerInterval = setInterval(updateRunningTimer, 300);
@@ -309,9 +298,7 @@ function togglePauseResume() {
 function pauseActiveStep() {
   const record = getActiveRecord();
 
-  if (!record) {
-    return;
-  }
+  if (!record) return;
 
   const now = Date.now();
 
@@ -328,8 +315,7 @@ function pauseActiveStep() {
   clearTimerInterval();
 
   els.pauseBtn.textContent = 'Resume';
-  els.timerMeta.textContent = `Paused at ${record.durationDisplay}`;
-  setMessage('Timer paused.', 'info');
+  setTimerMeta(`Paused at ${record.durationDisplay}`);
 
   renderSections();
 }
@@ -337,9 +323,7 @@ function pauseActiveStep() {
 function resumeActiveStep() {
   const record = getActiveRecord();
 
-  if (!record) {
-    return;
-  }
+  if (!record) return;
 
   const now = Date.now();
 
@@ -355,8 +339,7 @@ function resumeActiveStep() {
   record.pausedSeconds = state.pausedSeconds;
 
   els.pauseBtn.textContent = 'Pause';
-  els.timerMeta.textContent = 'Timer resumed.';
-  setMessage('Timer running.', 'info');
+  setTimerMeta('Timer resumed.');
 
   clearTimerInterval();
   state.timerInterval = setInterval(updateRunningTimer, 300);
@@ -368,7 +351,7 @@ async function completeActiveStep() {
   const record = getActiveRecord();
 
   if (!step || !record) {
-    setMessage('Select a step first.', 'error');
+    setTimerMeta('Select a step first.');
     return;
   }
 
@@ -400,7 +383,8 @@ async function completeActiveStep() {
   els.pauseBtn.disabled = true;
   els.completeBtn.disabled = true;
   els.pauseBtn.textContent = 'Pause';
-  els.timerMeta.textContent = `Completed at ${record.stepCompletedAt}`;
+
+  setTimerMeta(`Completed at ${record.stepCompletedAt}`);
 
   await saveCompletedStep(step, record);
 
@@ -442,7 +426,7 @@ async function saveCompletedStep(step, record) {
   };
 
   setBusy('Saving');
-  setMessage('Saving completed step...', 'info');
+  setTimerMeta('Saving completed step...');
 
   try {
     const result = await apiCall('saveStepTime', {
@@ -453,25 +437,23 @@ async function saveCompletedStep(step, record) {
 
     if (!result || !result.success) {
       record.status = 'SAVE_FAILED';
-      setMessage(result && result.message ? result.message : 'Unable to save step time.', 'error');
+      setTimerMeta(result && result.message ? result.message : 'Unable to save step time.');
       return;
     }
 
-    setMessage('Step completed and saved to Google Sheet.', 'success');
+    setTimerMeta('Step completed and saved.');
 
   } catch (error) {
     setBusy('Error');
     record.status = 'SAVE_FAILED';
-    setMessage(error.message || 'Unable to save step time.', 'error');
+    setTimerMeta(error.message || 'Unable to save step time.');
   }
 }
 
 function updateRunningTimer() {
   const record = getActiveRecord();
 
-  if (!record) {
-    return;
-  }
+  if (!record) return;
 
   const elapsedSeconds = getElapsedSeconds();
 
@@ -485,9 +467,7 @@ function updateRunningTimer() {
 }
 
 function getActiveStep() {
-  if (!state.activeStepKey) {
-    return null;
-  }
+  if (!state.activeStepKey) return null;
 
   for (const section of state.sections) {
     for (const step of section.steps) {
@@ -501,10 +481,7 @@ function getActiveStep() {
 }
 
 function getActiveRecord() {
-  if (!state.activeStepKey) {
-    return null;
-  }
-
+  if (!state.activeStepKey) return null;
   return state.stepRecords[state.activeStepKey] || null;
 }
 
@@ -552,9 +529,7 @@ function getSectionTotalSeconds(section) {
   return section.steps.reduce((sum, step) => {
     const record = state.stepRecords[getStepKey(step)];
 
-    if (!record) {
-      return sum;
-    }
+    if (!record) return sum;
 
     if (record.status === 'COMPLETED' || record.status === 'RUNNING' || record.status === 'PAUSED') {
       return sum + Number(record.durationSeconds || 0);
@@ -566,12 +541,7 @@ function getSectionTotalSeconds(section) {
 
 function getSectionTotalSecondsByName(sectionName) {
   const section = state.sections.find(item => item.sectionName === sectionName);
-
-  if (!section) {
-    return 0;
-  }
-
-  return getSectionTotalSeconds(section);
+  return section ? getSectionTotalSeconds(section) : 0;
 }
 
 function getSectionCompletedCount(section) {
@@ -600,9 +570,7 @@ function formatDuration(totalSeconds) {
 }
 
 function formatDateTime(date) {
-  if (!date) {
-    return '';
-  }
+  if (!date) return '';
 
   return new Intl.DateTimeFormat('en-US', {
     month: '2-digit',
@@ -614,9 +582,8 @@ function formatDateTime(date) {
   }).format(date);
 }
 
-function setMessage(message, type) {
-  els.saveMessage.textContent = message || '';
-  els.saveMessage.className = `message ${type || ''}`;
+function setTimerMeta(message) {
+  els.timerMeta.textContent = message || '';
 }
 
 function setBusy(label) {
