@@ -75,9 +75,11 @@ function applyConfig() {
 }
 
 function initializeSections() {
-  state.sections.forEach((section, index) => {
+  state.sections.forEach(section => {
     const sectionKey = getSectionKey(section);
-    state.expandedSections[sectionKey] = index === 0;
+
+    // All sections closed on page load.
+    state.expandedSections[sectionKey] = false;
 
     section.steps.forEach(step => {
       const stepKey = getStepKey(step);
@@ -131,6 +133,7 @@ function renderSections() {
 
     const sectionCard = document.createElement('div');
     sectionCard.className = 'section-card';
+    sectionCard.dataset.sectionKey = sectionKey;
 
     const headerButton = document.createElement('button');
     headerButton.type = 'button';
@@ -142,7 +145,9 @@ function renderSections() {
         <div class="section-chevron">${isExpanded ? '−' : '+'}</div>
       </div>
       <div class="section-meta">
-        <span class="section-pill">Section Total: ${formatDuration(sectionTotalSeconds)}</span>
+        <span class="section-pill" data-section-total="${escapeHtml(sectionKey)}">
+          Section Total: ${formatDuration(sectionTotalSeconds)}
+        </span>
         <span class="section-pill ${completedCount === totalCount ? 'done' : ''}">
           ${completedCount}/${totalCount} done
         </span>
@@ -173,6 +178,7 @@ function createStepRow(step) {
 
   const row = document.createElement('div');
   row.className = 'step-row';
+  row.dataset.stepRow = stepKey;
 
   if (state.activeStepKey === stepKey) {
     row.classList.add('active');
@@ -185,7 +191,7 @@ function createStepRow(step) {
   const hasActiveDifferentStep =
     state.activeStepKey &&
     state.activeStepKey !== stepKey &&
-    ['running', 'paused', 'stopped'].includes(state.timerStatus);
+    ['running', 'paused', 'stopped', 'saving'].includes(state.timerStatus);
 
   const canStart =
     !hasActiveDifferentStep &&
@@ -253,7 +259,9 @@ function createStepRow(step) {
       </div>
     </div>
 
-    <div class="step-time">${escapeHtml(record.durationDisplay || '00:00:00')}</div>
+    <div class="step-time" data-step-time="${escapeHtml(stepKey)}">
+      ${escapeHtml(record.durationDisplay || '00:00:00')}
+    </div>
   `;
 
   row.querySelectorAll('button[data-action]').forEach(button => {
@@ -296,6 +304,9 @@ function startStepByKey(stepKey) {
     return;
   }
 
+  const sectionKey = `section-${step.sectionOrder}`;
+  state.expandedSections[sectionKey] = true;
+
   state.activeStepKey = stepKey;
   state.timerStatus = 'running';
   state.startedAt = new Date();
@@ -315,7 +326,7 @@ function startStepByKey(stepKey) {
   record.pausedSeconds = 0;
 
   clearTimerInterval();
-  state.timerInterval = setInterval(updateRunningTimer, 300);
+  state.timerInterval = setInterval(updateRunningTimer, 500);
 
   renderSummary();
   renderSections();
@@ -396,6 +407,8 @@ async function completeActiveStep() {
 
   await saveCompletedStep(step, record);
 
+  const section = getSectionByName(step.sectionName);
+
   state.timerStatus = 'idle';
   state.activeStepKey = '';
   state.startedAt = null;
@@ -405,6 +418,10 @@ async function completeActiveStep() {
   state.pausedStartedAt = null;
   state.accumulatedMs = 0;
   state.pausedSeconds = 0;
+
+  if (section && getSectionCompletedCount(section) === section.steps.length) {
+    state.expandedSections[getSectionKey(section)] = false;
+  }
 
   renderSummary();
   renderSections();
@@ -458,8 +475,9 @@ async function saveCompletedStep(step, record) {
 
 function updateRunningTimer() {
   const record = getActiveRecord();
+  const step = getActiveStep();
 
-  if (!record) {
+  if (!record || !step) {
     return;
   }
 
@@ -468,8 +486,49 @@ function updateRunningTimer() {
   record.durationSeconds = elapsedSeconds;
   record.durationDisplay = formatDuration(elapsedSeconds);
 
-  renderSummary();
-  renderSections();
+  updateStepTimeOnly(state.activeStepKey, record.durationDisplay);
+  updateSectionTotalOnly(step.sectionName);
+  updateGrandTotalOnly();
+}
+
+function updateStepTimeOnly(stepKey, displayValue) {
+  const el = findElementByData('stepTime', stepKey);
+
+  if (el) {
+    el.textContent = displayValue;
+  }
+}
+
+function updateSectionTotalOnly(sectionName) {
+  const section = getSectionByName(sectionName);
+
+  if (!section) {
+    return;
+  }
+
+  const sectionKey = getSectionKey(section);
+  const el = findElementByData('sectionTotal', sectionKey);
+
+  if (el) {
+    el.textContent = `Section Total: ${formatDuration(getSectionTotalSeconds(section))}`;
+  }
+}
+
+function updateGrandTotalOnly() {
+  els.grandTotal.textContent = formatDuration(getGrandTotalSeconds());
+}
+
+function findElementByData(type, key) {
+  const attr = type === 'stepTime' ? 'data-step-time' : 'data-section-total';
+  const elements = document.querySelectorAll(`[${attr}]`);
+
+  for (const element of elements) {
+    if (element.getAttribute(attr) === key) {
+      return element;
+    }
+  }
+
+  return null;
 }
 
 function findStepByKey(stepKey) {
@@ -498,6 +557,10 @@ function getActiveRecord() {
   }
 
   return state.stepRecords[state.activeStepKey] || null;
+}
+
+function getSectionByName(sectionName) {
+  return state.sections.find(section => section.sectionName === sectionName) || null;
 }
 
 function getElapsedSeconds() {
@@ -557,7 +620,7 @@ function getSectionTotalSeconds(section) {
 }
 
 function getSectionTotalSecondsByName(sectionName) {
-  const section = state.sections.find(item => item.sectionName === sectionName);
+  const section = getSectionByName(sectionName);
   return section ? getSectionTotalSeconds(section) : 0;
 }
 
